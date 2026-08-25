@@ -753,18 +753,22 @@ async function loadRadiationMap() {
                 !(lat === 0 && lon === 0)
             ) {
 
-               const point = {
-    lat: lat,
-    lon: lon,
-    usv:
-        Number.isFinite(usv)
-            ? usv
-            : NaN,
-    cpm:
-        Number.isFinite(cpm)
-            ? cpm
-            : NaN
-};
+                const point = {
+
+                    lat: lat,
+
+                    lon: lon,
+
+                    usv:
+                        Number.isFinite(usv)
+                            ? usv
+                            : NaN,
+
+                    cpm:
+                        Number.isFinite(cpm)
+                            ? cpm
+                            : NaN
+                };
 
 
                 points.push(point);
@@ -780,11 +784,16 @@ async function loadRadiationMap() {
             pointByRowIndex;
 
 
-      
+        /* -----------------------------------------
+           UPDATE TABLE
+        ----------------------------------------- */
+
+        const rowsTerbaru =
+    [...data.table.rows].reverse();
 
 renderSpreadsheetTable(
     headers,
-    data.table.rows,
+    rowsTerbaru,
     timestampIndex,
     latIndex,
     lonIndex,
@@ -876,8 +885,8 @@ radMap.eachLayer(function (layer) {
            DATA TERBARU
         ----------------------------------------- */
 
-      const latest =
-    points[points.length - 1];
+        const latest =
+            points[points.length - 1];
 
 
         /* -----------------------------------------
@@ -1173,32 +1182,8 @@ function renderSpreadsheetTable(
        ROW
     ----------------------------------------- */
 
-  const sortedRows = rows
-    .map((row, originalIndex) => ({
-        row,
-        originalIndex
-    }))
-    .sort((a, b) => {
-        return (
-            getTimestampMillis(
-                b.row,
-                timestampIndex
-            ) -
-            getTimestampMillis(
-                a.row,
-                timestampIndex
-            )
-        );
-    });
-
-sortedRows.forEach(
-    (item, rowIndex) => {
-
-        const row =
-            item.row;
-
-        const originalIndex =
-            item.originalIndex;
+   [...rows].reverse().forEach(
+    (row, rowIndex) => {
 
             const lat =
                 Number(
@@ -1237,11 +1222,11 @@ sortedRows.forEach(
 
 
             const point =
-    window.radVPointByRowIndex
-        ? window.radVPointByRowIndex[
-            originalIndex
-        ]
-        : null;
+                window.radVPointByRowIndex
+                    ? window.radVPointByRowIndex[
+                        rowIndex
+                    ]
+                    : null;
 
 
             const latestPoint =
