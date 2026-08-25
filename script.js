@@ -73,6 +73,15 @@ let measurementMinute = 0;
 
 let measurementTimer = null;
 
+// =========================================================
+// TIMER PENGUKURAN RAD-V
+// =========================================================
+
+let measurementClockTimer = null;
+
+let measurementStartTime = null;
+
+const MEASUREMENT_TOTAL_SECONDS = 10 * 60;
 
 // =========================================================
 // LOCK HALAMAN SAAT AWAL
@@ -661,7 +670,6 @@ function updateControlState() {
 function toggleSwitch(number) {
 
     if (!radVAuthenticated) {
-
         return;
     }
 
@@ -672,41 +680,52 @@ function toggleSwitch(number) {
 
     if (number === 1) {
 
-        // Tidak boleh diubah saat pengukuran
-
         if (measurementActive) {
+            return;
+        }
+
+
+        const newState =
+            switch1State === "STOP"
+                ? "JALAN"
+                : "STOP";
+
+
+        const sent =
+            sendMQTT(
+                SWITCH1_TOPIC,
+                newState
+            );
+
+
+        if (!sent) {
+
+            console.warn(
+                `Gagal mengirim Saklar 1: ${newState}`
+            );
 
             return;
         }
 
 
-        if (
-            switch1State === "STOP"
-        ) {
-
-            // STOP -> JALAN
-
-            switch1State =
-                "JALAN";
+        switch1State =
+            newState;
 
 
-            sendMQTT(
-                SWITCH1_TOPIC,
-                "JALAN"
-            );
+        // Kalau pindah ke STOP,
+        // pastikan kontrol RC dihentikan.
 
-        } else {
+        if (newState === "STOP") {
 
-            // JALAN -> STOP
+            if (activeControl !== null) {
 
-            switch1State =
-                "STOP";
+                sendMQTT(
+                    CONTROL_TOPIC,
+                    "STOP"
+                );
 
-
-            sendMQTT(
-                SWITCH1_TOPIC,
-                "STOP"
-            );
+                activeControl = null;
+            }
         }
 
 
@@ -725,8 +744,7 @@ function toggleSwitch(number) {
 
     if (number === 2) {
 
-        // Saat mengukur:
-        // tekan lagi = SELESAI
+        // Sedang mengukur → tekan lagi = SELESAI
 
         if (measurementActive) {
 
@@ -738,12 +756,9 @@ function toggleSwitch(number) {
         }
 
 
-        // Pengukuran hanya boleh
-        // ketika Saklar 1 STOP
+        // Pengukuran hanya boleh saat Saklar 1 STOP
 
-        if (
-            switch1State !== "STOP"
-        ) {
+        if (switch1State !== "STOP") {
 
             console.warn(
                 "Pengukuran hanya boleh dimulai saat Saklar 1 STOP."
@@ -855,37 +870,103 @@ function updateSwitchDisplay() {
 
 function startMeasurement() {
 
+    // Jangan mulai jika sudah mengukur
     if (measurementActive) {
+        return;
+    }
+
+
+    // Saklar 1 harus STOP
+    if (switch1State !== "STOP") {
+
+        console.warn(
+            "Pengukuran hanya boleh dimulai saat Saklar 1 STOP."
+        );
 
         return;
     }
 
 
-    // Pastikan Saklar 1 STOP
-
+    // MQTT wajib ONLINE
     if (
-        switch1State !== "STOP"
+        !mqttClient ||
+        !mqttClient.connected
     ) {
 
+        console.warn(
+            "Pengukuran gagal: MQTT OFFLINE."
+        );
+
         return;
     }
 
+
+    // =====================================================
+    // KIRIM PERINTAH MENGUKUR KE ESP32
+    // =====================================================
+
+    const sent =
+        sendMQTT(
+            SWITCH2_TOPIC,
+            "MENGUKUR"
+        );
+
+
+    if (!sent) {
+
+        console.error(
+            "Gagal mengirim MENGUKUR ke ESP32."
+        );
+
+        return;
+    }
+
+
+    // =====================================================
+    // RESET SESI
+    // =====================================================
 
     measurementActive = true;
 
+    const measurementPanel =
+    document.getElementById(
+        "measurementPanel"
+    );
+
+if (measurementPanel) {
+    measurementPanel.classList.add("active");
+}
+    
     measurementMinute = 0;
+
+    measurementStartTime =
+        Date.now();
 
     switch2State =
         "MENGUKUR";
 
 
-    // Kirim ke ESP32
+    // =====================================================
+    // RESET TIMER
+    // =====================================================
 
-    sendMQTT(
-        SWITCH2_TOPIC,
-        "MENGUKUR"
+    clearTimeout(
+        measurementTimer
     );
 
+    measurementTimer = null;
+
+
+    clearInterval(
+        measurementClockTimer
+    );
+
+    measurementClockTimer = null;
+
+
+    // =====================================================
+    // UPDATE TAMPILAN
+    // =====================================================
 
     updateSwitchDisplay();
 
@@ -895,13 +976,23 @@ function startMeasurement() {
 
 
     // =====================================================
-    // TIMER 10 MENIT
+    // TIMER JAM
     // =====================================================
 
-    clearTimeout(
-        measurementTimer
-    );
+    measurementClockTimer =
+        setInterval(
+            function () {
 
+                updateMeasurementClock();
+
+            },
+            1000
+        );
+
+
+    // =====================================================
+    // TIMER MAKSIMAL 10 MENIT
+    // =====================================================
 
     measurementTimer =
         setTimeout(
@@ -912,14 +1003,19 @@ function startMeasurement() {
                 );
 
             },
-            10 * 60 * 1000
+            MEASUREMENT_TOTAL_SECONDS * 1000
         );
+
+
+    // Update pertama
+    updateMeasurementClock();
 
 
     console.log(
         "RAD-V: Pengukuran dimulai"
     );
 }
+
 
 
 // =========================================================
@@ -956,29 +1052,6 @@ function handleMeasurementData(
 
 
     // =====================================================
-    // VALIDASI MINUTE
-    // =====================================================
-
-    const minute =
-        Number(data.minute);
-
-
-    if (
-        !Number.isFinite(minute) ||
-        minute < 1 ||
-        minute > 10
-    ) {
-
-        console.warn(
-            "Minute tidak valid:",
-            data.minute
-        );
-
-        return;
-    }
-
-
-    // =====================================================
     // HANYA TERIMA DATA SAAT MENGUKUR
     // =====================================================
 
@@ -992,11 +1065,42 @@ function handleMeasurementData(
     }
 
 
-    measurementMinute =
-        minute;
+    // =====================================================
+    // VALIDASI MINUTE
+    // =====================================================
 
+   const minute =
+    Number(data.minute);
 
-    updateMeasurementDisplay();
+if (
+    !Number.isInteger(minute) ||
+    minute < 1 ||
+    minute > 10
+) {
+
+    console.warn(
+        "Minute tidak valid:",
+        data.minute
+    );
+
+    return;
+}
+
+if (
+    minute !== measurementMinute + 1
+) {
+
+    console.warn(
+        `Data tidak berurutan. ` +
+        `Diterima: ${minute}, ` +
+        `seharusnya: ${measurementMinute + 1}`
+    );
+
+    return;
+}
+
+measurementMinute =
+    minute;
 
 
     // =====================================================
@@ -1009,7 +1113,60 @@ function handleMeasurementData(
 
 
     // =====================================================
-    // DATA 10 / 10
+    // UPDATE PROGRESS
+    // =====================================================
+
+    updateMeasurementDisplay();
+
+
+    // =====================================================
+    // KETERANGAN DATA
+    // =====================================================
+
+    const dataInfo =
+        document.getElementById(
+            "measurementDataInfo"
+        );
+
+
+    if (dataInfo) {
+
+        dataInfo.textContent =
+            `✓ Data pengukuran ${minute}/10 telah diterima` +
+            ` — CPM: ${Number(data.cpm || 0).toFixed(0)}` +
+            ` — μSv/h: ${Number(data.usv || 0).toFixed(2)}`;
+    }
+
+
+    const description =
+        document.getElementById(
+            "measurementDescription"
+        );
+
+
+    if (description) {
+
+        if (minute < 10) {
+
+            description.textContent =
+                `Data ke-${minute}/10 berhasil diambil. Menunggu pengukuran menit berikutnya...`;
+
+        } else {
+
+            description.textContent =
+                "Data ke-10/10 berhasil diambil. Pengukuran selesai.";
+        }
+    }
+
+
+    console.log(
+        `RAD-V: Data ${minute}/10 diterima`,
+        data
+    );
+
+
+    // =====================================================
+    // DATA 10/10
     // =====================================================
 
     if (
@@ -1119,9 +1276,138 @@ function updateSensorDisplay(
     }
 }
 
+// =========================================================
+// UPDATE TIMER PENGUKURAN
+// =========================================================
+
+function updateMeasurementClock() {
+
+    if (
+        !measurementActive ||
+        !measurementStartTime
+    ) {
+        return;
+    }
+
+
+    const elapsedSeconds =
+        Math.floor(
+            (
+                Date.now() -
+                measurementStartTime
+            ) / 1000
+        );
+
+
+    const safeElapsed =
+        Math.min(
+            elapsedSeconds,
+            MEASUREMENT_TOTAL_SECONDS
+        );
+
+
+    const minutes =
+        Math.floor(
+            safeElapsed / 60
+        );
+
+
+    const seconds =
+        safeElapsed % 60;
+
+
+    // =====================================================
+    // TIMER
+    // =====================================================
+
+    const timer =
+        document.getElementById(
+            "measurementTimer"
+        );
+
+
+    if (timer) {
+
+        timer.textContent =
+            String(minutes).padStart(2, "0") +
+            ":" +
+            String(seconds).padStart(2, "0");
+    }
+
+
+    // =====================================================
+    // PROGRESS BERDASARKAN DATA
+    // =====================================================
+
+    const progressBar =
+        document.getElementById(
+            "measurementProgressBar"
+        );
+
+
+    if (progressBar) {
+
+        const percentage =
+            Math.min(
+                (measurementMinute / 10) * 100,
+                100
+            );
+
+        progressBar.style.width =
+            `${percentage}%`;
+    }
+
+
+    // =====================================================
+    // DETAIL
+    // =====================================================
+
+    const detail =
+        document.getElementById(
+            "measurementDetail"
+        );
+
+
+    if (detail) {
+
+        if (measurementMinute === 0) {
+
+            detail.textContent =
+                "Menunggu data pengukuran pertama...";
+
+        } else if (measurementMinute < 10) {
+
+            detail.textContent =
+                `Data ${measurementMinute}/10 sudah diterima. ` +
+                `Menunggu data berikutnya...`;
+
+        } else {
+
+            detail.textContent =
+                "Semua 10 data pengukuran sudah diterima.";
+        }
+    }
+
+
+    // =====================================================
+    // PROGRESS TEXT
+    // =====================================================
+
+    const progressText =
+        document.getElementById(
+            "measurementProgressText"
+        );
+
+
+    if (progressText) {
+
+        progressText.textContent =
+            `DATA ${measurementMinute} / 10`;
+    }
+}
 
 // =========================================================
-// UPDATE PROGRESS
+// UPDATE TAMPILAN PROGRESS PENGUKURAN
 // =========================================================
 
 function updateMeasurementDisplay() {
@@ -1138,35 +1424,191 @@ function updateMeasurementDisplay() {
         );
 
 
+    const description =
+        document.getElementById(
+            "measurementDescription"
+        );
+
+
+    const dataInfo =
+        document.getElementById(
+            "measurementDataInfo"
+        );
+
+
+    const progressBar =
+        document.getElementById(
+            "measurementProgressBar"
+        );
+
+
+    const progressText =
+        document.getElementById(
+            "measurementProgressText"
+        );
+
+
+    // =====================================================
+    // PERSENTASE DATA
+    // =====================================================
+
+    const percentage =
+        Math.min(
+            (measurementMinute / 10) * 100,
+            100
+        );
+
+
+    // =====================================================
+    // STATUS
+    // =====================================================
+
+    if (status) {
+
+        status.textContent =
+            measurementActive
+                ? "MENGUKUR"
+                : "SELESAI";
+    }
+
+
+    // =====================================================
+    // DATA
+    // =====================================================
+
+    if (progress) {
+
+        progress.textContent =
+            `${measurementMinute}/10`;
+    }
+
+
+    if (progressText) {
+
+        progressText.textContent =
+            `DATA ${measurementMinute} / 10`;
+    }
+
+
+    // =====================================================
+    // PROGRESS BAR
+    // =====================================================
+
+    if (progressBar) {
+
+        progressBar.style.width =
+            `${percentage}%`;
+    }
+
+
+    // =====================================================
+    // DESKRIPSI
+    // =====================================================
+
     if (measurementActive) {
 
-        if (status) {
+        if (measurementMinute === 0) {
 
-            status.textContent =
-                "MENGUKUR";
-        }
+            if (description) {
 
+                description.textContent =
+                    "Pengukuran dimulai. Menunggu data pertama...";
+            }
 
-        if (progress) {
+            if (dataInfo) {
 
-            progress.textContent =
-                `DATA ${measurementMinute} / 10`;
+                dataInfo.textContent =
+                    "Belum ada data. Menunggu data ke-1 dari ESP32.";
+            }
+
+        } else if (measurementMinute < 10) {
+
+            if (description) {
+
+                description.textContent =
+                    `Data ke-${measurementMinute}/10 berhasil diterima. ` +
+                    `Menunggu data berikutnya...`;
+            }
+
+            if (dataInfo) {
+
+                dataInfo.textContent =
+                    `✓ ${measurementMinute}/10 data telah diterima.`;
+            }
+
+        } else {
+
+            if (description) {
+
+                description.textContent =
+                    "✓ Semua 10 data pengukuran telah diterima.";
+            }
+
+            if (dataInfo) {
+
+                dataInfo.textContent =
+                    "✓ Pengukuran lengkap 10/10.";
+            }
         }
 
     } else {
 
-        if (status) {
+        // =================================================
+        // SELESAI
+        // =================================================
 
-            status.textContent =
-                "SELESAI";
+        if (measurementMinute >= 10) {
+
+            if (description) {
+
+                description.textContent =
+                    "✓ Pengukuran 10 menit telah selesai.";
+            }
+
+            if (dataInfo) {
+
+                dataInfo.textContent =
+                    "✓ Semua 10 data pengukuran berhasil diterima.";
+            }
+
+        } else if (measurementMinute > 0) {
+
+            if (description) {
+
+                description.textContent =
+                    "Pengukuran dihentikan sebelum 10 menit.";
+            }
+
+            if (dataInfo) {
+
+                dataInfo.textContent =
+                    `Pengukuran berhenti pada ${measurementMinute}/10.`;
+            }
+
+        } else {
+
+            if (description) {
+
+                description.textContent =
+                    "Aktifkan saklar SELESAI untuk memulai pengukuran.";
+            }
+
+            if (dataInfo) {
+
+                dataInfo.textContent =
+                    "Belum ada data pengukuran.";
+            }
         }
+    }
 
 
-        if (progress) {
+    // =====================================================
+    // UPDATE TIMER / DETAIL
+    // =====================================================
 
-            progress.textContent =
-                "-";
-        }
+    if (measurementActive) {
+
+        updateMeasurementClock();
     }
 }
 
@@ -1175,40 +1617,77 @@ function updateMeasurementDisplay() {
 // SELESAI PENGUKURAN
 // =========================================================
 
-function finishMeasurement(
-    reason
-) {
+function finishMeasurement(reason) {
 
     if (!measurementActive) {
-
         return;
     }
 
 
-    measurementActive = false;
+    // Simpan waktu terakhir
+    const finalElapsedSeconds =
+        measurementStartTime
+            ? Math.floor(
+                (
+                    Date.now() -
+                    measurementStartTime
+                ) / 1000
+            )
+            : 0;
 
+
+    // =====================================================
+    // STOP TIMER
+    // =====================================================
 
     clearTimeout(
         measurementTimer
     );
 
-
     measurementTimer = null;
 
 
-    // Kembali ke SELESAI
+    clearInterval(
+        measurementClockTimer
+    );
+
+    measurementClockTimer = null;
+
+
+    // =====================================================
+    // MATIKAN PENGUKURAN
+    // =====================================================
+
+    measurementActive = false;
+
+const measurementPanel =
+    document.getElementById(
+        "measurementPanel"
+    );
+
+if (measurementPanel) {
+    measurementPanel.classList.remove("active");
+}
+    
+    measurementStartTime = null;
 
     switch2State =
         "SELESAI";
 
 
-    // Kirim ke ESP32
+    // =====================================================
+    // KIRIM SELESAI KE ESP32
+    // =====================================================
 
     sendMQTT(
         SWITCH2_TOPIC,
         "SELESAI"
     );
 
+
+    // =====================================================
+    // UPDATE UI
+    // =====================================================
 
     updateSwitchDisplay();
 
@@ -1217,9 +1696,79 @@ function finishMeasurement(
     updateControlState();
 
 
+    // =====================================================
+    // TIMER TERAKHIR
+    // =====================================================
+
+    const timerElement =
+        document.getElementById(
+            "measurementTimer"
+        );
+
+
+    if (timerElement) {
+
+        const safeElapsed =
+            Math.min(
+                finalElapsedSeconds,
+                MEASUREMENT_TOTAL_SECONDS
+            );
+
+
+        const minutes =
+            Math.floor(
+                safeElapsed / 60
+            );
+
+
+        const seconds =
+            safeElapsed % 60;
+
+
+        timerElement.textContent =
+            String(minutes).padStart(2, "0") +
+            ":" +
+            String(seconds).padStart(2, "0");
+    }
+
+
+    // =====================================================
+    // PROGRESS TERAKHIR
+    // =====================================================
+
+    const progressBar =
+        document.getElementById(
+            "measurementProgressBar"
+        );
+
+
+    if (progressBar) {
+
+        progressBar.style.width =
+            `${Math.min(
+                (measurementMinute / 10) * 100,
+                100
+            )}%`;
+    }
+
+
+    const progressText =
+        document.getElementById(
+            "measurementProgressText"
+        );
+
+
+    if (progressText) {
+
+        progressText.textContent =
+            `DATA ${measurementMinute} / 10`;
+    }
+
+
     console.log(
         "RAD-V: Pengukuran selesai:",
-        reason
+        reason,
+        `${measurementMinute}/10`
     );
 }
 
@@ -1228,66 +1777,51 @@ function finishMeasurement(
 // KONTROL RC
 // =========================================================
 
-function pressControl(
-    command,
-    event
-) {
+function pressControl(command, event) {
 
     if (event) {
-
         event.preventDefault();
     }
 
-
-    // PIN
-
     if (!radVAuthenticated) {
-
-        return;
+        return false;
     }
-
-
-    // Sedang mengukur
 
     if (measurementActive) {
-
-        return;
+        return false;
     }
 
-
-    // RC hanya boleh saat JALAN
-
-    if (
-        switch1State !== "JALAN"
-    ) {
-
-        return;
+    if (switch1State !== "JALAN") {
+        return false;
     }
 
-
-    if (
-        activeControl === command
-    ) {
-
-        return;
+    if (activeControl === command) {
+        return true;
     }
 
+    const sent =
+        sendMQTT(
+            CONTROL_TOPIC,
+            command
+        );
+
+    if (!sent) {
+
+        console.warn(
+            "Perintah tidak terkirim:",
+            command
+        );
+
+        return false;
+    }
 
     activeControl =
         command;
-
-
-    sendMQTT(
-        CONTROL_TOPIC,
-        command
-    );
-
 
     const buttons =
         document.querySelectorAll(
             ".control-button"
         );
-
 
     buttons.forEach(
         button => {
@@ -1298,7 +1832,6 @@ function pressControl(
         }
     );
 
-
     if (event) {
 
         event.currentTarget.classList.add(
@@ -1306,18 +1839,18 @@ function pressControl(
         );
     }
 
-
     const commandDisplay =
         document.getElementById(
             "command"
         );
-
 
     if (commandDisplay) {
 
         commandDisplay.innerText =
             command;
     }
+
+    return true;
 }
 
 
@@ -1355,14 +1888,23 @@ function releaseControl(
     }
 
 
+  const sent =
     sendMQTT(
         CONTROL_TOPIC,
         "STOP"
     );
 
+if (!sent) {
 
-    activeControl =
-        null;
+    console.error(
+        "STOP gagal dikirim ke ESP32."
+    );
+
+    return;
+}
+
+activeControl =
+    null;
 
 
     const buttons =
@@ -1402,28 +1944,54 @@ function releaseControl(
 function sendRTB() {
 
     if (!radVAuthenticated) {
-
-        return;
+        return false;
     }
 
 
     if (measurementActive) {
-
-        return;
+        return false;
     }
 
 
-    if (
-        switch1State !== "JALAN"
-    ) {
-
-        return;
+    if (switch1State !== "JALAN") {
+        return false;
     }
 
 
-    sendMQTT(
-        CONTROL_TOPIC,
-        "RTB"
+    const sent =
+        sendMQTT(
+            CONTROL_TOPIC,
+            "RTB"
+        );
+
+
+    if (!sent) {
+
+        console.warn(
+            "RTB gagal dikirim ke ESP32."
+        );
+
+        return false;
+    }
+
+
+    // Pastikan kontrol sebelumnya dilepas
+    activeControl = null;
+
+
+    const buttons =
+        document.querySelectorAll(
+            ".control-button"
+        );
+
+
+    buttons.forEach(
+        button => {
+
+            button.classList.remove(
+                "active"
+            );
+        }
     );
 
 
@@ -1438,6 +2006,9 @@ function sendRTB() {
         commandDisplay.innerText =
             "RTB";
     }
+
+
+    return true;
 }
 
 
@@ -1448,91 +2019,90 @@ function sendRTB() {
 function switch1Jalan() {
 
     if (!radVAuthenticated) {
-
         return;
     }
-
 
     if (measurementActive) {
-
         return;
     }
 
-
-    if (
-        switch1State !== "JALAN"
-    ) {
-
-        switch1State =
-            "JALAN";
-
-
-        sendMQTT(
-            SWITCH1_TOPIC,
-            "JALAN"
-        );
-
-
-        updateSwitchDisplay();
-
-        updateControlState();
+    if (switch1State === "JALAN") {
+        return;
     }
+
+    const sent = sendMQTT(
+        SWITCH1_TOPIC,
+        "JALAN"
+    );
+
+    if (!sent) {
+        console.warn(
+            "Gagal mengirim JALAN ke ESP32."
+        );
+        return;
+    }
+
+    switch1State = "JALAN";
+
+    updateSwitchDisplay();
+    updateControlState();
 }
 
 
 function switch1Stop() {
 
     if (!radVAuthenticated) {
-
         return;
     }
-
 
     if (measurementActive) {
-
         return;
     }
 
+    if (switch1State === "STOP") {
+        return;
+    }
 
-    if (
-        switch1State !== "STOP"
-    ) {
+    const sent = sendMQTT(
+        SWITCH1_TOPIC,
+        "STOP"
+    );
 
-        switch1State =
-            "STOP";
+    if (!sent) {
+        console.warn(
+            "Gagal mengirim STOP ke ESP32."
+        );
+        return;
+    }
 
+    switch1State = "STOP";
+
+    if (activeControl !== null) {
 
         sendMQTT(
-            SWITCH1_TOPIC,
+            CONTROL_TOPIC,
             "STOP"
         );
 
-
-        updateSwitchDisplay();
-
-        updateControlState();
+        activeControl = null;
     }
+
+    updateSwitchDisplay();
+    updateControlState();
 }
 
 
 function switch2Mengukur() {
 
     if (!radVAuthenticated) {
-
         return;
     }
 
-
-    if (
-        switch1State !== "STOP"
-    ) {
-
+    if (switch1State !== "STOP") {
         return;
     }
-
 
     if (!measurementActive) {
-
         startMeasurement();
     }
 }
@@ -1541,16 +2111,11 @@ function switch2Mengukur() {
 function switch2Selesai() {
 
     if (!radVAuthenticated) {
-
         return;
     }
 
-
     if (measurementActive) {
-
-        finishMeasurement(
-            "MANUAL"
-        );
+        finishMeasurement("MANUAL");
     }
 }
 
@@ -1710,15 +2275,31 @@ document.addEventListener(
         // AKTIFKAN KONTROL
         // =============================================
 
-        keyboardControlActive =
-            command;
+       const activated =
+    pressControl(
+        command,
+        null
+    );
 
 
-        // Kirim perintah MQTT
-        pressControl(
-            command,
-            null
-        );
+if (!activated) {
+    return;
+}
+
+
+keyboardControlActive =
+    command;
+
+
+highlightKeyboardButton(
+    command
+);
+
+
+console.log(
+    "KEYBOARD:",
+    command
+);
 
 
         // =============================================
