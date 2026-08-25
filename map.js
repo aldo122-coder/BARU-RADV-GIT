@@ -1182,8 +1182,32 @@ function renderSpreadsheetTable(
        ROW
     ----------------------------------------- */
 
-   [...rows].reverse().forEach(
-    (row, rowIndex) => {
+  const sortedRows = rows
+    .map((row, originalIndex) => ({
+        row,
+        originalIndex
+    }))
+    .sort((a, b) => {
+        return (
+            getTimestampMillis(
+                b.row,
+                timestampIndex
+            ) -
+            getTimestampMillis(
+                a.row,
+                timestampIndex
+            )
+        );
+    });
+
+sortedRows.forEach(
+    (item, rowIndex) => {
+
+        const row =
+            item.row;
+
+        const originalIndex =
+            item.originalIndex;
 
             const lat =
                 Number(
@@ -1222,11 +1246,11 @@ function renderSpreadsheetTable(
 
 
             const point =
-                window.radVPointByRowIndex
-                    ? window.radVPointByRowIndex[
-                        rowIndex
-                    ]
-                    : null;
+    window.radVPointByRowIndex
+        ? window.radVPointByRowIndex[
+            originalIndex
+        ]
+        : null;
 
 
             const latestPoint =
