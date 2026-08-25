@@ -755,20 +755,29 @@ async function loadRadiationMap() {
 
                 const point = {
 
-                    lat: lat,
+    lat: lat,
 
-                    lon: lon,
+    lon: lon,
 
-                    usv:
-                        Number.isFinite(usv)
-                            ? usv
-                            : NaN,
+    usv:
+        Number.isFinite(usv)
+            ? usv
+            : NaN,
 
-                    cpm:
-                        Number.isFinite(cpm)
-                            ? cpm
-                            : NaN
-                };
+    cpm:
+        Number.isFinite(cpm)
+            ? cpm
+            : NaN,
+
+    timestamp:
+        getTimestampMillis(
+            row,
+            timestampIndex
+        ),
+
+    originalIndex:
+        rowIndex
+};
 
 
                 points.push(point);
@@ -784,12 +793,7 @@ async function loadRadiationMap() {
             pointByRowIndex;
 
 
-        /* -----------------------------------------
-           UPDATE TABLE
-        ----------------------------------------- */
-
-        const rowsTerbaru =
-    [...data.table.rows].reverse();
+      
 
 renderSpreadsheetTable(
     headers,
@@ -886,7 +890,12 @@ radMap.eachLayer(function (layer) {
         ----------------------------------------- */
 
         const latest =
-            points[points.length - 1];
+    points.reduce(
+        (latest, point) =>
+            point.timestamp > latest.timestamp
+                ? point
+                : latest
+    );
 
 
         /* -----------------------------------------
