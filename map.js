@@ -753,30 +753,17 @@ async function loadRadiationMap() {
                 !(lat === 0 && lon === 0)
             ) {
 
-                const point = {
-
+               const point = {
     lat: lat,
-
     lon: lon,
-
     usv:
         Number.isFinite(usv)
             ? usv
             : NaN,
-
     cpm:
         Number.isFinite(cpm)
             ? cpm
-            : NaN,
-
-    timestamp:
-        getTimestampMillis(
-            row,
-            timestampIndex
-        ),
-
-    originalIndex:
-        rowIndex
+            : NaN
 };
 
 
@@ -889,13 +876,8 @@ radMap.eachLayer(function (layer) {
            DATA TERBARU
         ----------------------------------------- */
 
-        const latest =
-    points.reduce(
-        (latest, point) =>
-            point.timestamp > latest.timestamp
-                ? point
-                : latest
-    );
+      const latest =
+    points[points.length - 1];
 
 
         /* -----------------------------------------
