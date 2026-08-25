@@ -1,2639 +1,1696 @@
-// =========================================================
-// RAD-V PIN SECURITY
-// =========================================================
+/* =========================================================
+   RAD-V GPS MAPPING
+   Google Spreadsheet -> Leaflet Map + Table
+========================================================= */
 
-const RADV_PIN = "1234";
+const SPREADSHEET_ID =
+    "1xLhZmmkAYq8_xfaccntf8GUCx0XZZ8y9Rn7KZ0Ob_2U";
 
-let radVAuthenticated = false;
+const SHEET_NAME = "data";
 
-
-// =========================================================
-// MQTT
-// =========================================================
-
-const MQTT_HOST =
-    "68417029aa9e4dffb745d0d102bef6be.s1.eu.hivemq.cloud";
-
-const MQTT_PORT = 8884;
-
-const MQTT_USERNAME = "radv";
-
-const MQTT_PASSWORD =
-    "122130148";
+const REFRESH_INTERVAL = 10000; // 10 detik
 
 
-const CONTROL_TOPIC =
-    "rc/control";
+/* =========================================================
+   GLOBAL
+========================================================= */
 
-const SWITCH1_TOPIC =
-    "rc/switch1";
-
-const SWITCH2_TOPIC =
-    "rc/switch2";
-
-const DATA_TOPIC =
-    "rc/data";
+let radMap = null;
+let pointLayer = null;
+let latestMarker = null;
 
 
-let mqttClient = null;
+/* =========================================================
+   INIT MAP
+========================================================= */
 
-let activeControl = null;
+function initRadiationMap() {
 
-
-// =========================================================
-// STATE RAD-V
-// =========================================================
-
-// Saklar 1:
-// STOP = pengukuran boleh dimulai
-// JALAN = kontrol RC aktif
-
-let switch1State = "BERHENTI";
-
-
-// Saklar 2:
-// SELESAI = tidak mengukur
-// MENGUKUR = sedang mengukur
-
-let switch2State = "SENSOR";
-
-
-// Status pengukuran
-
-let measurementActive = false;
-
-
-// Data keberapa
-// 0 = belum ada data
-
-let measurementMinute = 0;
-
-// Jumlah data pada tabel sebelum pengukuran dimulai
-let measurementInitialTableCount = 0;
-
-// Timer untuk memantau perubahan jumlah data tabel
-let measurementTableWatcher = null;
-
-
-// Timer maksimal 10 menit
-
-let measurementTimer = null;
-
-// =========================================================
-// TIMER PENGUKURAN RAD-V
-// =========================================================
-
-let measurementClockTimer = null;
-
-let measurementStartTime = null;
-
-const MEASUREMENT_TOTAL_SECONDS = 10 * 60;
-
-// =========================================================
-// LOCK HALAMAN SAAT AWAL
-// =========================================================
-
-document.addEventListener(
-    "DOMContentLoaded",
-    function () {
-
-        document.body.classList.add(
-            "pin-locked"
-        );
-
-
-        const pinInput =
-            document.getElementById(
-                "pinInput"
-            );
-
-
-        if (pinInput) {
-
-            pinInput.focus();
-        }
-
-
-        updateSwitchDisplay();
-
-        updateMeasurementDisplay();
-
-        updateControlState();
-    }
-);
-
-
-// =========================================================
-// CEK PIN
-// =========================================================
-
-function checkPIN() {
-
-    const pinInput =
-        document.getElementById(
-            "pinInput"
-        );
-
-
-    const pinScreen =
-        document.getElementById(
-            "pinScreen"
-        );
-
-
-    const pinError =
-        document.getElementById(
-            "pinError"
-        );
-
-
-    if (!pinInput || !pinScreen) {
-
+    if (typeof L === "undefined") {
+        console.error("Leaflet belum dimuat.");
         return;
     }
 
+    const mapElement = document.getElementById("radMap");
 
-    const enteredPIN =
-        pinInput.value.trim();
-
-
-    // =====================================================
-    // PIN BENAR
-    // =====================================================
-
-    if (enteredPIN === RADV_PIN) {
-
-        radVAuthenticated = true;
-
-
-        pinScreen.style.display =
-            "none";
-
-
-        document.body.classList.remove(
-            "pin-locked"
-        );
-
-
-        if (pinError) {
-
-            pinError.textContent = "";
-        }
-
-
-        pinInput.value = "";
-
-
-        // Baru connect MQTT
-        connectMQTT();
-
-
-        updateControlState();
-
-
-        console.log(
-            "RAD-V: Akses diterima"
-        );
-
-
+    if (!mapElement) {
+        console.error("Element #radMap tidak ditemukan.");
+        return;
     }
 
-    // =====================================================
-    // PIN SALAH
-    // =====================================================
+    /* -----------------------------------------
+       Buat peta
+    ----------------------------------------- */
 
-    else {
-
-        radVAuthenticated = false;
-
-
-        pinInput.value = "";
+    radMap = L.map("radMap", {
+        zoomControl: true,
+        attributionControl: true
+    }).setView([-5.4, 105.25], 15);
 
 
-        if (pinError) {
+    /* -----------------------------------------
+       OpenStreetMap
+    ----------------------------------------- */
 
-            pinError.textContent =
-                "PIN salah. Silakan coba lagi.";
+    L.tileLayer(
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        {
+            maxZoom: 20,
+            attribution: "&copy; OpenStreetMap contributors"
+        }
+    ).addTo(radMap);
+
+
+    /* -----------------------------------------
+       Layer marker
+    ----------------------------------------- */
+
+    pointLayer = L.layerGroup().addTo(radMap);
+
+
+    /* -----------------------------------------
+       Pastikan ukuran peta benar
+    ----------------------------------------- */
+
+    setTimeout(() => {
+
+        if (radMap) {
+            radMap.invalidateSize();
         }
 
+    }, 500);
 
-        pinInput.focus();
+
+    /* -----------------------------------------
+       Load pertama
+    ----------------------------------------- */
+
+    loadRadiationMap();
 
 
-        console.log(
-            "RAD-V: PIN salah"
-        );
-    }
+    /* -----------------------------------------
+       Auto refresh
+    ----------------------------------------- */
+
+    setInterval(() => {
+
+        loadRadiationMap();
+
+    }, REFRESH_INTERVAL);
 }
 
 
-// =========================================================
-// CONNECT MQTT
-// =========================================================
+/* =========================================================
+   GOOGLE GVIZ URL
+========================================================= */
 
-function connectMQTT() {
+function getGvizUrl() {
 
-    // Jangan membuat koneksi kedua
-    if (
-        mqttClient &&
-        (
-            mqttClient.connected ||
-            mqttClient.reconnecting
-        )
-    ) {
+    return (
+        "https://docs.google.com/spreadsheets/d/" +
+        SPREADSHEET_ID +
+        "/gviz/tq?tqx=out:json&sheet=" +
+        encodeURIComponent(SHEET_NAME)
+    );
+}
 
-        return;
+
+/* =========================================================
+   NORMALIZE HEADER
+========================================================= */
+
+function normalizeHeader(value) {
+
+    return String(value || "")
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w]/g, "");
+}
+
+
+/* =========================================================
+   FIND COLUMN
+========================================================= */
+
+function findColumn(headers, aliases) {
+
+    const normalizedHeaders =
+        headers.map(normalizeHeader);
+
+
+    /* -----------------------------------------
+       Cocok persis
+    ----------------------------------------- */
+
+    for (const alias of aliases) {
+
+        const normalizedAlias =
+            normalizeHeader(alias);
+
+        const index =
+            normalizedHeaders.indexOf(normalizedAlias);
+
+        if (index !== -1) {
+            return index;
+        }
     }
 
 
-    const mqttURL =
-        `wss://${MQTT_HOST}:${MQTT_PORT}/mqtt`;
+    /* -----------------------------------------
+       Cocok sebagian
+    ----------------------------------------- */
 
+    for (let i = 0; i < normalizedHeaders.length; i++) {
 
-    const options = {
+        for (const alias of aliases) {
 
-        username:
-            MQTT_USERNAME,
-
-        password:
-            MQTT_PASSWORD,
-
-        connectTimeout:
-            5000,
-
-        reconnectPeriod:
-            3000,
-
-        clean:
-            true
-    };
-
-
-    console.log(
-        "Menghubungkan MQTT..."
-    );
-
-
-    mqttClient =
-        mqtt.connect(
-            mqttURL,
-            options
-        );
-
-
-    // =====================================================
-    // MQTT CONNECTED
-    // =====================================================
-
-    mqttClient.on(
-        "connect",
-        function () {
-
-            console.log(
-                "MQTT Connected"
-            );
-
-
-            const status =
-                document.getElementById(
-                    "systemStatus"
-                );
-
-
-            if (status) {
-
-                status.innerText =
-                    "MQTT ONLINE";
-            }
-
-
-            // Subscribe data pengukuran
-            mqttClient.subscribe(
-                DATA_TOPIC,
-                {
-                    qos: 0
-                },
-                function (error) {
-
-                    if (error) {
-
-                        console.error(
-                            "Gagal subscribe rc/data:",
-                            error
-                        );
-
-                    } else {
-
-                        console.log(
-                            "Subscribe:",
-                            DATA_TOPIC
-                        );
-                    }
-                }
-            );
-        }
-    );
-
-
-    // =====================================================
-    // TERIMA MQTT
-    // =====================================================
-
-    mqttClient.on(
-        "message",
-        function (
-            topic,
-            payload
-        ) {
+            const normalizedAlias =
+                normalizeHeader(alias);
 
             if (
-                topic !== DATA_TOPIC
+                normalizedAlias &&
+                normalizedHeaders[i].includes(normalizedAlias)
             ) {
-
-                return;
-            }
-
-
-            handleMeasurementData(
-                payload.toString()
-            );
-        }
-    );
-
-
-    // =====================================================
-    // ERROR
-    // =====================================================
-
-    mqttClient.on(
-        "error",
-        function (error) {
-
-            console.error(
-                "MQTT ERROR:",
-                error
-            );
-        }
-    );
-
-
-    // =====================================================
-    // CLOSE
-    // =====================================================
-
-    mqttClient.on(
-        "close",
-        function () {
-
-            const status =
-                document.getElementById(
-                    "systemStatus"
-                );
-
-
-            if (status) {
-
-                status.innerText =
-                    "MQTT OFFLINE";
+                return i;
             }
         }
+    }
+
+    return -1;
+}
+
+
+/* =========================================================
+   PARSE GOOGLE GVIZ
+========================================================= */
+
+function parseGvizResponse(text) {
+
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+
+    if (start === -1 || end === -1) {
+
+        throw new Error(
+            "Format data Google Spreadsheet tidak dikenali."
+        );
+    }
+
+    return JSON.parse(
+        text.substring(start, end + 1)
     );
 }
 
 
-// =========================================================
-// PUBLISH MQTT
-// =========================================================
+/* =========================================================
+   GET CELL VALUE
+========================================================= */
 
-function sendMQTT(
-    topic,
-    message
-) {
+function valueFromCell(row, index, formatted = false) {
 
     if (
-        !mqttClient ||
-        !mqttClient.connected
+        index < 0 ||
+        !row ||
+        !row.c ||
+        !row.c[index]
     ) {
-
-        console.log(
-            "MQTT belum terhubung"
-        );
-
-        return false;
+        return null;
     }
 
+    const cell = row.c[index];
 
-    mqttClient.publish(
-        topic,
-        message,
-        {
-            qos: 0,
-            retain: false
-        }
-    );
+    if (formatted && cell.f !== undefined) {
+        return cell.f;
+    }
 
-
-    console.log(
-        "MQTT SEND:",
-        topic,
-        message
-    );
-
-
-    return true;
+    return cell.v;
 }
 
 
-// =========================================================
-// UPDATE KONDISI SEMUA TOMBOL
-// =========================================================
+/* =========================================================
+   FORMAT TIMESTAMP
+   Hasil:
+   DD/MM/YYYY HH:mm:ss
 
-function updateControlState() {
+   Contoh:
+   Date(2026,2,1,15,7,44)
+   menjadi:
+   01/03/2026 15:07:44
+========================================================= */
 
-    const rcButtons =
-        document.querySelectorAll(
-            ".control-button"
-        );
-
-
-    const rtbButton =
-        document.querySelector(
-            ".rtb-button"
-        );
-
-
-    const switch1 =
-        document.getElementById(
-            "switch1"
-        );
-
-
-    const switch2 =
-        document.getElementById(
-            "switch2"
-        );
-
-
-    // =====================================================
-    // BELUM LOGIN
-    // =====================================================
-
-    if (!radVAuthenticated) {
-
-        rcButtons.forEach(
-            button => {
-
-                button.disabled = true;
-            }
-        );
-
-
-        if (rtbButton) {
-
-            rtbButton.disabled = true;
-        }
-
-
-        if (switch1) {
-
-            switch1.classList.add(
-                "disabled"
-            );
-        }
-
-
-        if (switch2) {
-
-            switch2.classList.add(
-                "disabled"
-            );
-        }
-
-
-        return;
-    }
-
-
-    // =====================================================
-    // SEDANG MENGUKUR
-    // =====================================================
-
-    if (measurementActive) {
-
-        // Semua kontrol RC disabled
-
-        rcButtons.forEach(
-            button => {
-
-                button.disabled = true;
-
-                button.classList.remove(
-                    "active"
-                );
-            }
-        );
-
-
-        // RTB disabled
-
-        if (rtbButton) {
-
-            rtbButton.disabled = true;
-        }
-
-
-        // Saklar 1 dikunci
-
-        if (switch1) {
-
-            switch1.classList.add(
-                "disabled"
-            );
-        }
-
-
-        // Saklar 2 tetap aktif
-        // agar dapat menekan SELESAI
-
-        if (switch2) {
-
-            switch2.classList.remove(
-                "disabled"
-            );
-        }
-
-
-        return;
-    }
-
-
-    // =====================================================
-    // TIDAK SEDANG MENGUKUR
-    // =====================================================
-
-
-    // -----------------------------------------------------
-    // SAKLAR 1 = STOP
-    // -----------------------------------------------------
+function formatTimestamp(row, index) {
 
     if (
-        switch1State === "BERHENTI"
+        !row ||
+        !row.c ||
+        index < 0 ||
+        !row.c[index]
+    ) {
+        return "";
+    }
+
+    const cell = row.c[index];
+
+    /*
+     * Ambil nilai asli dari Google GViz.
+     *
+     * Contoh:
+     * Date(2026,2,1,15,7,44)
+     */
+    const value = cell.v;
+
+    if (
+        value === null ||
+        value === undefined
+    ) {
+        return "";
+    }
+
+    const text = String(value).trim();
+
+
+    /* =====================================================
+       FORMAT GOOGLE GVIZ
+       
+       Date(2026,2,1,15,7,44)
+       
+       Google:
+       0 = Januari
+       1 = Februari
+       2 = Maret
+    ===================================================== */
+
+    const match = text.match(
+        /^Date\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/
+    );
+
+
+    if (match) {
+
+        const year = Number(match[1]);
+
+        const month = Number(match[2]) + 1;
+
+        const day = Number(match[3]);
+
+        const hour = Number(match[4]);
+
+        const minute = Number(match[5]);
+
+        const second = Number(match[6]);
+
+
+        return (
+            String(day).padStart(2, "0") +
+            "/" +
+            String(month).padStart(2, "0") +
+            "/" +
+            String(year) +
+            " " +
+            String(hour).padStart(2, "0") +
+            ":" +
+            String(minute).padStart(2, "0") +
+            ":" +
+            String(second).padStart(2, "0")
+        );
+    }
+
+
+    /*
+     * Jika bukan Date(...)
+     *
+     * Coba gunakan format yang diberikan Google Sheets.
+     */
+    if (
+        cell.f !== undefined &&
+        cell.f !== null &&
+        String(cell.f).trim() !== ""
     ) {
 
-        // RC disabled
-
-        rcButtons.forEach(
-            button => {
-
-                button.disabled = true;
-
-                button.classList.remove(
-                    "active"
-                );
-            }
-        );
+        const formatted =
+            String(cell.f).trim();
 
 
-        // RTB disabled
+        /*
+         * Jika sudah DD/MM/YYYY HH:mm:ss
+         * biarkan.
+         */
+        const normalFormat =
+            formatted.match(
+                /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/
+            );
 
-        if (rtbButton) {
 
-            rtbButton.disabled = true;
-        }
+        if (normalFormat) {
 
-
-        // Saklar 1 aktif
-
-        if (switch1) {
-
-            switch1.classList.remove(
-                "disabled"
+            return (
+                String(normalFormat[1]).padStart(2, "0") +
+                "/" +
+                String(normalFormat[2]).padStart(2, "0") +
+                "/" +
+                normalFormat[3] +
+                " " +
+                String(normalFormat[4]).padStart(2, "0") +
+                ":" +
+                String(normalFormat[5]).padStart(2, "0") +
+                ":" +
+                String(normalFormat[6]).padStart(2, "0")
             );
         }
 
 
-        // Saklar 2 boleh memulai pengukuran
-
-        if (switch2) {
-
-            switch2.classList.remove(
-                "disabled"
-            );
-        }
+        return formatted;
     }
 
 
-    // -----------------------------------------------------
-    // SAKLAR 1 = JALAN
-    // -----------------------------------------------------
-
-    else {
-
-        // RC aktif
-
-        rcButtons.forEach(
-            button => {
-
-                button.disabled = false;
-            }
-        );
-
-
-        // RTB aktif
-
-        if (rtbButton) {
-
-            rtbButton.disabled = false;
-        }
-
-
-        // Saklar 1 aktif
-
-        if (switch1) {
-
-            switch1.classList.remove(
-                "disabled"
-            );
-        }
-
-
-        // Pengukuran tidak boleh dimulai
-
-        if (switch2) {
-
-            switch2.classList.add(
-                "disabled"
-            );
-        }
-    }
+    return text;
 }
 
-
 // =========================================================
-// TOGGLE SAKLAR
-// =========================================================
-
-function toggleSwitch(number) {
-
-    if (!radVAuthenticated) {
-        return;
-    }
-
-
-    // =====================================================
-    // SAKLAR 1
-    // =====================================================
-
-    if (number === 1) {
-
-        if (measurementActive) {
-            return;
-        }
-
-
-        const newState =
-            switch1State === "BERHENTI"
-                ? "JALAN"
-                : "BERHENTI";
-
-
-        const sent =
-            sendMQTT(
-                SWITCH1_TOPIC,
-                newState
-            );
-
-
-        if (!sent) {
-
-            console.warn(
-                `Gagal mengirim Saklar 1: ${newState}`
-            );
-
-            return;
-        }
-
-
-        switch1State =
-            newState;
-
-
-        // Kalau pindah ke STOP,
-        // pastikan kontrol RC dihentikan.
-
-        if (newState === "BERHENTI") {
-
-            if (activeControl !== null) {
-
-                sendMQTT(
-                    CONTROL_TOPIC,
-                    "BERHENTI"
-                );
-
-                activeControl = null;
-            }
-        }
-
-
-        updateSwitchDisplay();
-
-        updateControlState();
-
-
-        return;
-    }
-
-
-    // =====================================================
-    // SAKLAR 2
-    // =====================================================
-
-    if (number === 2) {
-
-        // Sedang mengukur → tekan lagi = SELESAI
-
-        if (measurementActive) {
-
-            finishMeasurement(
-                "MANUAL"
-            );
-
-            return;
-        }
-
-
-        // Pengukuran hanya boleh saat Saklar 1 STOP
-
-        if (switch1State !== "BERHENTI") {
-
-            console.warn(
-                "Pengukuran hanya boleh dimulai saat Saklar 1 BERHENTI."
-            );
-
-            return;
-        }
-
-
-        startMeasurement();
-    }
-}
-
-
-// =========================================================
-// UPDATE TAMPILAN SAKLAR
+// PARSE TIMESTAMP UNTUK SORTING
+// Terbaru -> Terlama
 // =========================================================
 
-function updateSwitchDisplay() {
+function getTimestampMillis(row, index) {
 
-    const switch1 =
-        document.getElementById(
-            "switch1"
-        );
-
-
-    const status1 =
-        document.getElementById(
-            "status1"
-        );
-
-
-    const switch2 =
-        document.getElementById(
-            "switch2"
-        );
-
-
-    const status2 =
-        document.getElementById(
-            "status2"
-        );
-
-
-    // =====================================================
-    // SAKLAR 1
-    // =====================================================
-
-    if (switch1) {
-
-        if (
-            switch1State === "JALAN"
-        ) {
-
-            switch1.classList.add(
-                "active"
-            );
-
-        } else {
-
-            switch1.classList.remove(
-                "active"
-            );
-        }
-    }
-
-
-    if (status1) {
-
-        status1.textContent =
-            switch1State;
-    }
-
-
-    // =====================================================
-    // SAKLAR 2
-    // =====================================================
-
-    if (switch2) {
-
-        if (
-            switch2State === "MENGUKUR"
-        ) {
-
-            switch2.classList.add(
-                "active"
-            );
-
-        } else {
-
-            switch2.classList.remove(
-                "active"
-            );
-        }
-    }
-
-
-    if (status2) {
-
-        status2.textContent =
-            switch2State;
-    }
-}
-
-
-// =========================================================
-// HITUNG JUMLAH DATA PADA TABEL
-// =========================================================
-
-function getRadiationTableDataCount() {
-
-    const tbody =
-        document.querySelector(
-            "#radiationTable tbody"
-        );
-
-    if (!tbody) {
+    if (
+        !row ||
+        !row.c ||
+        index < 0 ||
+        !row.c[index]
+    ) {
         return 0;
     }
 
-    const rows =
-        tbody.querySelectorAll(
-            "tr"
+
+    const cell =
+        row.c[index];
+
+
+    const value =
+        cell.v;
+
+
+    if (
+        value === null ||
+        value === undefined
+    ) {
+        return 0;
+    }
+
+
+    const text =
+        String(value).trim();
+
+
+    /* -----------------------------------------
+       GOOGLE GVIZ DATE
+       
+       Contoh:
+       Date(2026,7,23,1,56,1)
+       
+       Bulan:
+       0 = Januari
+       7 = Agustus
+    ----------------------------------------- */
+
+    const match =
+        text.match(
+            /^Date\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/
         );
 
-    let count = 0;
 
-    rows.forEach(row => {
+    if (match) {
 
-        // Abaikan baris kosong
-        if (
-            row.classList.contains("table-empty")
-        ) {
-            return;
-        }
+        const year =
+            Number(match[1]);
 
-        // Abaikan row yang tidak memiliki data
-        const cells =
-            row.querySelectorAll("td");
+        const month =
+            Number(match[2]);
 
-        if (cells.length === 0) {
-            return;
-        }
+        const day =
+            Number(match[3]);
 
-        count++;
-    });
+        const hour =
+            Number(match[4]);
 
-    return count;
+        const minute =
+            Number(match[5]);
+
+        const second =
+            Number(match[6]);
+
+
+        return new Date(
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second
+        ).getTime();
+    }
+
+
+    /* -----------------------------------------
+       FORMAT DD/MM/YYYY HH:mm:ss
+    ----------------------------------------- */
+
+    const normal =
+        text.match(
+            /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/
+        );
+
+
+    if (normal) {
+
+        const day =
+            Number(normal[1]);
+
+        const month =
+            Number(normal[2]) - 1;
+
+        const year =
+            Number(normal[3]);
+
+        const hour =
+            Number(normal[4]);
+
+        const minute =
+            Number(normal[5]);
+
+        const second =
+            Number(normal[6]);
+
+
+        return new Date(
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second
+        ).getTime();
+    }
+
+
+    /* -----------------------------------------
+       COBA PARSE DATE BIASA
+    ----------------------------------------- */
+
+    const parsed =
+        new Date(text);
+
+
+    if (
+        !Number.isNaN(
+            parsed.getTime()
+        )
+    ) {
+
+        return parsed.getTime();
+    }
+
+
+    return 0;
+}
+
+/* =========================================================
+   FORMAT CELL
+========================================================= */
+
+function formatCellValue(value) {
+
+    if (
+        value === null ||
+        value === undefined
+    ) {
+        return "";
+    }
+
+    return String(value);
 }
 
 
-// =========================================================
-// MONITOR DATA TABEL
-// =========================================================
+/* =========================================================
+   RADIATION LEVEL
+========================================================= */
 
-function checkMeasurementTableProgress() {
+function radiationLevel(usv) {
 
-    if (!measurementActive) {
-        return;
+    if (!Number.isFinite(usv)) {
+        return "unknown";
     }
 
-    const currentCount =
-        getRadiationTableDataCount();
+
+    if (usv < 0.3) {
+        return "safe";
+    }
 
 
-    // Berapa data baru sejak pengukuran dimulai
-    const newDataCount =
-        currentCount -
-        measurementInitialTableCount;
+    if (usv < 1.0) {
+        return "medium";
+    }
 
 
-    const newProgress =
-        Math.max(
-            0,
-            Math.min(
-                newDataCount,
-                10
-            )
-        );
+    return "high";
+}
 
 
-    // Hanya update jika progress berubah
-    if (
-        newProgress !== measurementMinute
-    ) {
+/* =========================================================
+   MARKER COLOR
+========================================================= */
 
-        measurementMinute =
-            newProgress;
+function markerColor(level) {
+
+    if (level === "safe") {
+        return "#22c55e";
+    }
+
+    if (level === "medium") {
+        return "#f59e0b";
+    }
+
+    if (level === "high") {
+        return "#ef4444";
+    }
+
+    return "#6b7280";
+}
 
 
-        console.log(
-            "RAD-V TABLE PROGRESS:",
+/* =========================================================
+   ESCAPE HTML
+========================================================= */
+
+function escapeHtml(value) {
+
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+
+/* =========================================================
+   CREATE MARKER
+========================================================= */
+
+function makeMarker(
+    lat,
+    lon,
+    usv,
+    cpm,
+    isLatest
+) {
+
+    const level =
+        radiationLevel(usv);
+
+
+    const color =
+        isLatest
+            ? "#2563eb"
+            : markerColor(level);
+
+
+    const marker =
+        L.circleMarker(
+            [lat, lon],
             {
-                awal:
-                    measurementInitialTableCount,
+                radius: isLatest ? 9 : 5,
 
-                sekarang:
-                    currentCount,
+                color: color,
 
-                baru:
-                    newDataCount,
+                weight: isLatest ? 3 : 1,
 
-                progress:
-                    `${measurementMinute}/10`
+                fillColor: color,
+
+                fillOpacity: 0.8
             }
         );
 
 
-        updateMeasurementDisplay();
-    }
+    marker.bindPopup(`
+
+        <div style="min-width:180px">
+
+            <strong>☢️ RAD-V</strong>
+
+            <br>
+
+            Latitude:
+            ${lat.toFixed(6)}
+
+            <br>
+
+            Longitude:
+            ${lon.toFixed(6)}
+
+            <br>
+
+            μSv/h:
+            ${
+                Number.isFinite(usv)
+                    ? usv.toFixed(3)
+                    : "-"
+            }
+
+            <br>
+
+            CPM:
+            ${
+                Number.isFinite(cpm)
+                    ? cpm.toFixed(2)
+                    : "-"
+            }
+
+            ${
+                isLatest
+                    ? "<br><strong>🔵 POSISI TERBARU</strong>"
+                    : ""
+            }
+
+        </div>
+
+    `);
 
 
-    // =====================================================
-    // 10 DATA SUDAH MASUK
-    // =====================================================
-
-    if (
-        measurementMinute >= 10
-    ) {
-
-        clearInterval(
-            measurementTableWatcher
-        );
-
-        measurementTableWatcher =
-            null;
-
-        finishMeasurement(
-            "COMPLETE"
-        );
-    }
+    return marker;
 }
 
 
-// =========================================================
-// MULAI PENGUKURAN
-// =========================================================
+/* =========================================================
+   LOAD DATA SPREADSHEET
+========================================================= */
 
-function startMeasurement() {
+async function loadRadiationMap() {
 
-    // Jangan mulai jika sudah mengukur
-    if (measurementActive) {
-        return;
-    }
+    const mapInfo =
+        document.getElementById("mapInfo");
 
-
-    // Saklar 1 harus STOP
-    if (switch1State !== "BERHENTI") {
-
-        console.warn(
-            "Pengukuran hanya boleh dimulai saat Saklar 1 BERHENTI."
-        );
-
-        return;
-    }
-
-
-    // MQTT wajib ONLINE
-    if (
-        !mqttClient ||
-        !mqttClient.connected
-    ) {
-
-        console.warn(
-            "Pengukuran gagal: MQTT OFFLINE."
-        );
-
-        return;
-    }
-
-
-    // =====================================================
-    // KIRIM PERINTAH MENGUKUR KE ESP32
-    // =====================================================
-
-    const sent =
-        sendMQTT(
-            SWITCH2_TOPIC,
-            "MENGUKUR"
-        );
-
-
-    if (!sent) {
-
-        console.error(
-            "Gagal mengirim MENGUKUR ke ESP32."
-        );
-
-        return;
-    }
-
-
-    // =====================================================
-    // RESET SESI
-    // =====================================================
-
-   measurementActive = true;
-
-const measurementPanel =
-    document.getElementById(
-        "measurementPanel"
-    );
-
-if (measurementPanel) {
-    measurementPanel.classList.add(
-        "active"
-    );
-}
-
-
-// =====================================================
-// SIMPAN JUMLAH DATA TABEL SAAT MULAI
-// =====================================================
-
-measurementInitialTableCount =
-    getRadiationTableDataCount();
-
-
-// Reset progress
-measurementMinute = 0;
-
-
-measurementStartTime =
-    Date.now();
-
-    switch2State =
-        "MENGUKUR";
-
-
-    // =====================================================
-    // RESET TIMER
-    // =====================================================
-
-    clearTimeout(
-        measurementTimer
-    );
-
-    measurementTimer = null;
-
-
-    clearInterval(
-        measurementClockTimer
-    );
-
-    measurementClockTimer = null;
-
-
-    // =====================================================
-    // UPDATE TAMPILAN
-    // =====================================================
-
-    updateSwitchDisplay();
-
-    updateMeasurementDisplay();
-
-    updateControlState();
-
-
-    // =====================================================
-    // TIMER JAM
-    // =====================================================
-
-    measurementClockTimer =
-        setInterval(
-            function () {
-
-                updateMeasurementClock();
-
-            },
-            1000
-        );
-
-
-// =====================================================
-// MONITOR JUMLAH DATA TABEL
-// =====================================================
-
-clearInterval(
-    measurementTableWatcher
-);
-
-measurementTableWatcher =
-    setInterval(
-        function () {
-
-            checkMeasurementTableProgress();
-
-        },
-        2000
-    );
-
-    
-    // =====================================================
-    // TIMER MAKSIMAL 10 MENIT
-    // =====================================================
-
-    measurementTimer =
-        setTimeout(
-            function () {
-
-                finishMeasurement(
-                    "TIMEOUT"
-                );
-
-            },
-            MEASUREMENT_TOTAL_SECONDS * 1000
-        );
-
-
-    // Update pertama
-    updateMeasurementClock();
-
-
-    console.log(
-        "RAD-V: Pengukuran dimulai"
-    );
-}
-
-
-
-// =========================================================
-// TERIMA DATA rc/data
-// =========================================================
-
-function handleMeasurementData(
-    message
-) {
-
-    console.log(
-        "MQTT DATA:",
-        message
-    );
-
-
-    let data;
+    const tableInfo =
+        document.getElementById("tableInfo");
 
 
     try {
 
-        data =
-            JSON.parse(message);
+        if (mapInfo) {
+            mapInfo.textContent =
+                "Mengambil data GPS...";
+        }
+
+
+        const response =
+            await fetch(
+                getGvizUrl(),
+                {
+                    cache: "no-store"
+                }
+            );
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                `HTTP ${response.status}`
+            );
+        }
+
+
+        const text =
+            await response.text();
+
+
+        const data =
+            parseGvizResponse(text);
+
+
+        if (
+            !data.table ||
+            !data.table.cols ||
+            !data.table.rows
+        ) {
+
+            throw new Error(
+                "Data Spreadsheet kosong atau tidak valid."
+            );
+        }
+
+
+        /* -----------------------------------------
+           HEADER
+        ----------------------------------------- */
+
+        const headers =
+            data.table.cols.map(
+                col =>
+                    col.label ||
+                    col.id ||
+                    ""
+            );
+
+
+        /* -----------------------------------------
+           CARI KOLOM
+        ----------------------------------------- */
+
+        const timestampIndex =
+            findColumn(
+                headers,
+                [
+                    "timestamp",
+                    "time",
+                    "waktu",
+                    "tanggal",
+                    "date"
+                ]
+            );
+
+
+        const latIndex =
+            findColumn(
+                headers,
+                [
+                    "latitude",
+                    "lat",
+                    "latitude gps",
+                    "gps latitude"
+                ]
+            );
+
+
+        const lonIndex =
+            findColumn(
+                headers,
+                [
+                    "longitude",
+                    "lon",
+                    "lng",
+                    "longitude gps",
+                    "gps longitude"
+                ]
+            );
+
+
+        const usvIndex =
+            findColumn(
+                headers,
+                [
+                    "uSv/h",
+                    "usv/h",
+                    "usv",
+                    "μSv/h",
+                    "µSv/h",
+                    "radiation"
+                ]
+            );
+
+
+        const cpmIndex =
+            findColumn(
+                headers,
+                [
+                    "CPM",
+                    "cpm",
+                    "counts per minute"
+                ]
+            );
+
+
+        /* -----------------------------------------
+           VALIDASI GPS
+        ----------------------------------------- */
+
+        if (
+            latIndex === -1 ||
+            lonIndex === -1
+        ) {
+
+            throw new Error(
+                "Kolom Latitude / Longitude tidak ditemukan."
+            );
+        }
+
+
+        /* -----------------------------------------
+           POINT DATA
+        ----------------------------------------- */
+
+        const points = [];
+
+        const pointByRowIndex = {};
+
+
+        for (
+            let rowIndex = 0;
+            rowIndex < data.table.rows.length;
+            rowIndex++
+        ) {
+
+            const row =
+                data.table.rows[rowIndex];
+
+
+            const lat =
+                Number(
+                    valueFromCell(
+                        row,
+                        latIndex
+                    )
+                );
+
+
+            const lon =
+                Number(
+                    valueFromCell(
+                        row,
+                        lonIndex
+                    )
+                );
+
+
+            const usv =
+                Number(
+                    valueFromCell(
+                        row,
+                        usvIndex
+                    )
+                );
+
+
+            const cpm =
+                Number(
+                    valueFromCell(
+                        row,
+                        cpmIndex
+                    )
+                );
+
+
+            if (
+                Number.isFinite(lat) &&
+                Number.isFinite(lon) &&
+                lat >= -90 &&
+                lat <= 90 &&
+                lon >= -180 &&
+                lon <= 180 &&
+                !(lat === 0 && lon === 0)
+            ) {
+
+               const point = {
+
+    lat: lat,
+
+    lon: lon,
+
+    usv:
+        Number.isFinite(usv)
+            ? usv
+            : NaN,
+
+    cpm:
+        Number.isFinite(cpm)
+            ? cpm
+            : NaN,
+
+    timestamp:
+        getTimestampMillis(
+            row,
+            timestampIndex
+        ),
+
+    originalIndex:
+        rowIndex
+};
+
+
+                points.push(point);
+
+
+                pointByRowIndex[rowIndex] =
+                    point;
+            }
+        }
+
+const latestPoint =
+    points.length > 0
+        ? points.reduce(
+            (latest, point) =>
+                point.timestamp >
+                latest.timestamp
+                    ? point
+                    : latest
+        )
+        : null;
+       
+        window.radVPointByRowIndex =
+            pointByRowIndex;
+
+
+     /* -----------------------------------------
+   UPDATE TABLE
+----------------------------------------- */
+
+renderSpreadsheetTable(
+    headers,
+    data.table.rows,
+    timestampIndex,
+    latIndex,
+    lonIndex,
+    usvIndex,
+    cpmIndex,
+    points
+);
+
+
+        /* -----------------------------------------
+           TIDAK ADA GPS
+        ----------------------------------------- */
+
+        if (points.length === 0) {
+
+            if (mapInfo) {
+
+                mapInfo.textContent =
+                    "Belum ada koordinat GPS yang valid.";
+            }
+
+            return;
+        }
+
+
+/* -----------------------------------------
+   CLEAR MARKER
+----------------------------------------- */
+
+if (pointLayer) {
+    pointLayer.clearLayers();
+}
+
+
+/* -----------------------------------------
+   HAPUS SEMUA GARIS LAMA
+----------------------------------------- */
+
+radMap.eachLayer(function (layer) {
+
+    if (
+        layer instanceof L.Polyline &&
+        !(layer instanceof L.CircleMarker)
+    ) {
+        radMap.removeLayer(layer);
+    }
+
+});
+
+
+        /* -----------------------------------------
+           KOORDINAT
+        ----------------------------------------- */
+
+        const latLngs =
+            points.map(
+                point => [
+                    point.lat,
+                    point.lon
+                ]
+            );
+
+
+        /* -----------------------------------------
+           MARKER
+        ----------------------------------------- */
+
+        points.forEach(
+    (point) => {
+
+        const marker =
+            makeMarker(
+                point.lat,
+                point.lon,
+                point.usv,
+                point.cpm,
+                point === latestPoint
+            );
+
+        marker.addTo(
+            pointLayer
+        );
+    }
+);
+
+
+        /* -----------------------------------------
+           DATA TERBARU
+        ----------------------------------------- */
+
+       const latest =
+    latestPoint;
+
+
+        /* -----------------------------------------
+           HAPUS MARKER TERBARU LAMA
+        ----------------------------------------- */
+
+        if (latestMarker) {
+
+            radMap.removeLayer(
+                latestMarker
+            );
+
+            latestMarker = null;
+        }
+
+
+        /* -----------------------------------------
+           LINGKARAN POSISI TERBARU
+        ----------------------------------------- */
+
+        latestMarker =
+            L.circleMarker(
+                [
+                    latest.lat,
+                    latest.lon
+                ],
+                {
+                    radius: 12,
+
+                    color: "#2563eb",
+
+                    weight: 3,
+
+                    fillColor: "#2563eb",
+
+                    fillOpacity: 0.15
+                }
+            ).addTo(radMap);
+
+
+        latestMarker.bindPopup(`
+
+            <strong>🔵 POSISI TERBARU RAD-V</strong>
+
+            <br>
+
+            Latitude:
+            ${latest.lat.toFixed(6)}
+
+            <br>
+
+            Longitude:
+            ${latest.lon.toFixed(6)}
+
+            <br>
+
+            μSv/h:
+            ${
+                Number.isFinite(latest.usv)
+                    ? latest.usv.toFixed(3)
+                    : "-"
+            }
+
+            <br>
+
+            CPM:
+            ${
+                Number.isFinite(latest.cpm)
+                    ? latest.cpm.toFixed(2)
+                    : "-"
+            }
+
+        `);
+
+
+        /* -----------------------------------------
+           UPDATE KARTU DASHBOARD
+        ----------------------------------------- */
+
+        const latEl =
+            document.getElementById(
+                "latitude"
+            );
+
+
+        const lonEl =
+            document.getElementById(
+                "longitude"
+            );
+
+
+        const usvEl =
+            document.getElementById(
+                "usv"
+            );
+
+
+        const cpmEl =
+            document.getElementById(
+                "cpm"
+            );
+
+
+        if (latEl) {
+
+            latEl.textContent =
+                latest.lat.toFixed(6);
+        }
+
+
+        if (lonEl) {
+
+            lonEl.textContent =
+                latest.lon.toFixed(6);
+        }
+
+
+        if (
+            usvEl &&
+            Number.isFinite(latest.usv)
+        ) {
+
+            usvEl.textContent =
+                latest.usv.toFixed(2);
+        }
+
+
+        if (
+            cpmEl &&
+            Number.isFinite(latest.cpm)
+        ) {
+
+            cpmEl.textContent =
+                latest.cpm.toFixed(0);
+        }
+
+
+        /* -----------------------------------------
+           FIT MAP
+        ----------------------------------------- */
+
+        if (!radMap._radVHasFitted) {
+
+            radMap.fitBounds(
+                L.latLngBounds(latLngs),
+                {
+                    padding: [30, 30]
+                }
+            );
+
+
+            radMap._radVHasFitted =
+                true;
+        }
+
+
+        /* -----------------------------------------
+           MAP INFO
+        ----------------------------------------- */
+
+        if (mapInfo) {
+
+            mapInfo.textContent =
+                `${points.length} titik GPS | ` +
+                `Posisi terbaru: ` +
+                `${latest.lat.toFixed(6)}, ` +
+                `${latest.lon.toFixed(6)} | ` +
+                `Update otomatis ` +
+                `${REFRESH_INTERVAL / 1000} detik`;
+        }
 
     } catch (error) {
 
         console.error(
-            "JSON rc/data tidak valid:",
+            "RAD-V Mapping Error:",
             error
         );
 
-        return;
+
+        if (mapInfo) {
+
+            mapInfo.textContent =
+                "Gagal mengambil data Spreadsheet.";
+        }
+
+
+        if (tableInfo) {
+
+            tableInfo.textContent =
+                "Gagal mengambil data Spreadsheet.";
+        }
     }
+}
 
 
-    // =====================================================
-    // HANYA TERIMA DATA SAAT MENGUKUR
-    // =====================================================
+/* =========================================================
+   RENDER TABLE
+========================================================= */
 
-    if (!measurementActive) {
-
-        console.log(
-            "Data diterima tetapi tidak ada sesi pengukuran aktif."
-        );
-
-        return;
-    }
-
-
-    // =====================================================
-// VALIDASI DATA MQTT
-// =====================================================
-
-const minute =
-    Number(data.minute);
-
-if (
-    data.minute !== undefined &&
-    data.minute !== null &&
-    (
-        !Number.isInteger(minute) ||
-        minute < 1 ||
-        minute > 10
-    )
+function renderSpreadsheetTable(
+    headers,
+    rows,
+    timestampIndex,
+    latIndex,
+    lonIndex,
+    usvIndex,
+    cpmIndex,
+    points
 ) {
 
-    console.warn(
-        "Minute MQTT tidak valid:",
-        data.minute
-    );
-
-    // Jangan hentikan data.
-    // Progress sekarang mengikuti tabel.
-}
-
-
-    // =====================================================
-    // UPDATE SENSOR
-    // =====================================================
-
-    updateSensorDisplay(
-        data
-    );
-
-
-    // =====================================================
-    // UPDATE PROGRESS
-    // =====================================================
-
-    updateMeasurementDisplay();
-
-
-    // =====================================================
-    // KETERANGAN DATA
-    // =====================================================
-
-    const dataInfo =
+    const head =
         document.getElementById(
-            "measurementDataInfo"
+            "radiationTableHead"
         );
 
 
-    if (dataInfo) {
+    const body =
+        document.getElementById(
+            "radiationTableBody"
+        );
 
-        dataInfo.textContent =
-            `✓ Data pengukuran ${minute}/10 telah diterima` +
-            ` — CPM: ${Number(data.cpm || 0).toFixed(0)}` +
-            ` — μSv/h: ${Number(data.usv || 0).toFixed(2)}`;
+
+    const info =
+        document.getElementById(
+            "tableInfo"
+        );
+
+
+    if (!head || !body) {
+        return;
     }
 
 
-    const description =
-        document.getElementById(
-            "measurementDescription"
-        );
+    /* -----------------------------------------
+       HEADER
+    ----------------------------------------- */
 
+    head.innerHTML = `
 
-    if (description) {
+    <tr>
 
-        if (minute < 10) {
+        <th>No.</th>
 
-            description.textContent =
-                `Data ke-${minute}/10 berhasil diambil. Menunggu pengukuran menit berikutnya...`;
+        ${headers
+            .map((header, colIndex) => {
 
-        } else {
+                // Jangan tampilkan kolom F
+                if (colIndex === 5) {
+                    return "";
+                }
 
-            description.textContent =
-                "Data ke-10/10 berhasil diambil. Pengukuran selesai.";
+                return `
+                    <th>
+                        ${escapeHtml(header || "-")}
+                    </th>
+                `;
+
+            })
+            .join("")
         }
+
+        <th>Peta</th>
+
+    </tr>
+`;
+
+    body.innerHTML = "";
+
+
+    /* -----------------------------------------
+       KOSONG
+    ----------------------------------------- */
+
+    if (!rows.length) {
+
+        body.innerHTML = `
+
+            <tr>
+
+                <td
+                    colspan="${headers.length + 2}"
+                    class="table-empty"
+                >
+                    Belum ada data pada Google Spreadsheet.
+                </td>
+
+            </tr>
+        `;
+
+
+        if (info) {
+            info.textContent = "0 data";
+        }
+
+        return;
     }
 
 
-    console.log(
-        `RAD-V: Data ${minute}/10 diterima`,
-        data
-    );
+ /* -----------------------------------------
+   ROW
+----------------------------------------- */
 
+/* -----------------------------------------
+   URUTKAN DATA TERBARU DI ATAS
+----------------------------------------- */
 
-    // =====================================================
-    // DATA 10/10
-    // =====================================================
-
-    if (
-        minute >= 10
-    ) {
-
-        finishMeasurement(
-            "COMPLETE"
-        );
-    }
-}
-
-
-// =========================================================
-// UPDATE SENSOR
-// =========================================================
-
-function updateSensorDisplay(
-    data
-) {
-
-    const cpmEl =
-        document.getElementById(
-            "cpm"
-        );
-
-
-    const usvEl =
-        document.getElementById(
-            "usv"
-        );
-
-
-    const latEl =
-        document.getElementById(
-            "latitude"
-        );
-
-
-    const lonEl =
-        document.getElementById(
-            "longitude"
-        );
-
-
-    // =====================================================
-    // CPM
-    // =====================================================
-
-    if (
-        cpmEl &&
-        Number.isFinite(
-            Number(data.cpm)
+const sortedRows =
+    rows
+        .map(
+            (row, originalIndex) => ({
+                row: row,
+                originalIndex: originalIndex,
+                timestamp:
+                    getTimestampMillis(
+                        row,
+                        timestampIndex
+                    )
+            })
         )
-    ) {
+        .sort(
+            (a, b) =>
+                b.timestamp -
+                a.timestamp
+        );
 
-        cpmEl.textContent =
-            Number(data.cpm).toFixed(0);
-    }
+
+/* -----------------------------------------
+   RENDER ROW
+----------------------------------------- */
+
+sortedRows.forEach(
+    (item, displayIndex) => {
+
+        const row =
+            item.row;
+
+        const originalIndex =
+            item.originalIndex;
 
 
-    // =====================================================
-    // uSv/h
-    // =====================================================
+        const lat =
+            Number(
+                valueFromCell(
+                    row,
+                    latIndex
+                )
+            );
 
-    if (
-        usvEl &&
-        Number.isFinite(
-            Number(data.usv)
+
+        const lon =
+            Number(
+                valueFromCell(
+                    row,
+                    lonIndex
+                )
+            );
+
+
+        const usv =
+            Number(
+                valueFromCell(
+                    row,
+                    usvIndex
+                )
+            );
+
+
+        const cpm =
+            Number(
+                valueFromCell(
+                    row,
+                    cpmIndex
+                )
+            );
+
+
+       /* -----------------------------------------
+   CARI POINT SESUAI BARIS ASLI
+----------------------------------------- */
+
+const point =
+    window.radVPointByRowIndex
+        ? window.radVPointByRowIndex[
+            originalIndex
+        ]
+        : null;
+
+
+/* -----------------------------------------
+   TENTUKAN DATA TERBARU
+----------------------------------------- */
+
+const latestOriginalIndex =
+    sortedRows.length > 0
+        ? sortedRows[0].originalIndex
+        : -1;
+
+
+const isLatest =
+    originalIndex === latestOriginalIndex;
+
+
+        const level =
+            radiationLevel(usv);
+
+
+        const tr =
+            document.createElement("tr");
+
+
+        if (isLatest) {
+
+            tr.classList.add(
+                "latest-row"
+            );
+        }
+
+
+        /* -----------------------------------------
+           CELL DATA
+        ----------------------------------------- */
+
+        const values =
+    headers
+        .map(
+            (header, colIndex) => {
+
+                // Jangan tampilkan kolom F
+                if (colIndex === 5) {
+                    return "";
+                }
+
+                let value;
+
+                if (
+                    colIndex === timestampIndex
+                ) {
+
+                    value =
+                        formatTimestamp(
+                            row,
+                            colIndex
+                        );
+
+                } else {
+
+                    value =
+                        formatCellValue(
+                            valueFromCell(
+                                row,
+                                colIndex
+                            )
+                        );
+                }
+
+                let className = "";
+
+                if (
+                    colIndex === usvIndex
+                ) {
+
+                    if (
+                        level === "safe"
+                    ) {
+
+                        className =
+                            "radiation-low";
+
+                    } else if (
+                        level === "medium"
+                    ) {
+
+                        className =
+                            "radiation-medium";
+
+                    } else if (
+                        level === "high"
+                    ) {
+
+                        className =
+                            "radiation-high";
+                    }
+                }
+
+                return `
+                    <td class="${className}">
+                        ${escapeHtml(value)}
+                    </td>
+                `;
+            }
         )
-    ) {
+        .join("");
 
-        usvEl.textContent =
-            Number(data.usv).toFixed(2);
-    }
 
+        /* -----------------------------------------
+           BUTTON PETA
+        ----------------------------------------- */
 
-    // =====================================================
-    // LATITUDE
-    // =====================================================
+        const mapButton =
+            Number.isFinite(lat) &&
+            Number.isFinite(lon)
 
-    if (
-        latEl &&
-        Number.isFinite(
-            Number(data.latitude)
-        )
-    ) {
+                ? `
+                    <button
+                        type="button"
+                        class="table-map-button"
+                    >
+                        📍 LIHAT
+                    </button>
+                `
 
-        latEl.textContent =
-            Number(data.latitude).toFixed(6);
-    }
+                : "-";
 
 
-    // =====================================================
-    // LONGITUDE
-    // =====================================================
+        /* -----------------------------------------
+           BUAT BARIS
+        ----------------------------------------- */
 
-    if (
-        lonEl &&
-        Number.isFinite(
-            Number(data.longitude)
-        )
-    ) {
+        tr.innerHTML = `
 
-        lonEl.textContent =
-            Number(data.longitude).toFixed(6);
-    }
-}
+            <td>
+                ${displayIndex + 1}
+            </td>
 
-// =========================================================
-// UPDATE TIMER PENGUKURAN
-// =========================================================
+            ${values}
 
-function updateMeasurementClock() {
+            <td>
+                ${mapButton}
+            </td>
+        `;
 
-    if (
-        !measurementActive ||
-        !measurementStartTime
-    ) {
-        return;
-    }
 
+        /* -----------------------------------------
+           CLICK ROW
+        ----------------------------------------- */
 
-    const elapsedSeconds =
-        Math.floor(
-            (
-                Date.now() -
-                measurementStartTime
-            ) / 1000
-        );
+        tr.addEventListener(
+            "click",
+            () => {
 
+                if (
+                    !Number.isFinite(lat) ||
+                    !Number.isFinite(lon) ||
+                    !radMap
+                ) {
 
-    const safeElapsed =
-        Math.min(
-            elapsedSeconds,
-            MEASUREMENT_TOTAL_SECONDS
-        );
+                    return;
+                }
 
 
-    const minutes =
-        Math.floor(
-            safeElapsed / 60
-        );
+                /* -------------------------------
+                   Fokus peta
+                ------------------------------- */
 
-
-    const seconds =
-        safeElapsed % 60;
-
-
-    // =====================================================
-    // TIMER
-    // =====================================================
-
-    const timer =
-        document.getElementById(
-            "measurementTimer"
-        );
-
-
-    if (timer) {
-
-        timer.textContent =
-            String(minutes).padStart(2, "0") +
-            ":" +
-            String(seconds).padStart(2, "0");
-    }
-
-
-    // =====================================================
-    // PROGRESS BERDASARKAN DATA
-    // =====================================================
-
-    const progressBar =
-        document.getElementById(
-            "measurementProgressBar"
-        );
-
-
-    if (progressBar) {
-
-        const percentage =
-            Math.min(
-                (measurementMinute / 10) * 100,
-                100
-            );
-
-        progressBar.style.width =
-            `${percentage}%`;
-    }
-
-
-    // =====================================================
-    // DETAIL
-    // =====================================================
-
-    const detail =
-        document.getElementById(
-            "measurementDetail"
-        );
-
-
-    if (detail) {
-
-        if (measurementMinute === 0) {
-
-            detail.textContent =
-                "Menunggu data pengukuran pertama...";
-
-        } else if (measurementMinute < 10) {
-
-            detail.textContent =
-                `Data ${measurementMinute}/10 sudah diterima. ` +
-                `Menunggu data berikutnya...`;
-
-        } else {
-
-            detail.textContent =
-                "Semua 10 data pengukuran sudah diterima.";
-        }
-    }
-
-
-    // =====================================================
-    // PROGRESS TEXT
-    // =====================================================
-
-    const progressText =
-        document.getElementById(
-            "measurementProgressText"
-        );
-
-
-    if (progressText) {
-
-        progressText.textContent =
-            `DATA ${measurementMinute} / 10`;
-    }
-}
-
-// =========================================================
-// UPDATE TAMPILAN PROGRESS PENGUKURAN
-// =========================================================
-
-function updateMeasurementDisplay() {
-
-    const status =
-        document.getElementById(
-            "measurementStatus"
-        );
-
-
-    const progress =
-        document.getElementById(
-            "measurementProgress"
-        );
-
-
-    const description =
-        document.getElementById(
-            "measurementDescription"
-        );
-
-
-    const dataInfo =
-        document.getElementById(
-            "measurementDataInfo"
-        );
-
-
-    const progressBar =
-        document.getElementById(
-            "measurementProgressBar"
-        );
-
-
-    const progressText =
-        document.getElementById(
-            "measurementProgressText"
-        );
-
-
-    // =====================================================
-    // PERSENTASE DATA
-    // =====================================================
-
-    const percentage =
-        Math.min(
-            (measurementMinute / 10) * 100,
-            100
-        );
-
-
-    // =====================================================
-    // STATUS
-    // =====================================================
-
-    if (status) {
-
-        status.textContent =
-            measurementActive
-                ? "ON"
-                : "OFF";
-    }
-
-
-    // =====================================================
-    // DATA
-    // =====================================================
-
-    if (progress) {
-
-        progress.textContent =
-            `${measurementMinute}/10`;
-    }
-
-
-    if (progressText) {
-
-        progressText.textContent =
-            `DATA ${measurementMinute} / 10`;
-    }
-
-
-    // =====================================================
-    // PROGRESS BAR
-    // =====================================================
-
-    if (progressBar) {
-
-        progressBar.style.width =
-            `${percentage}%`;
-    }
-
-
-    // =====================================================
-    // DESKRIPSI
-    // =====================================================
-
-    if (measurementActive) {
-
-        if (measurementMinute === 0) {
-
-            if (description) {
-
-                description.textContent =
-                    "Pengukuran dimulai. Menunggu data pertama...";
-            }
-
-            if (dataInfo) {
-
-                dataInfo.textContent =
-                    "Belum ada data. Menunggu data ke-1 dari ESP32.";
-            }
-
-        } else if (measurementMinute < 10) {
-
-            if (description) {
-
-                description.textContent =
-                    `Data ke-${measurementMinute}/10 berhasil diterima. ` +
-                    `Menunggu data berikutnya...`;
-            }
-
-            if (dataInfo) {
-
-                dataInfo.textContent =
-                    `✓ ${measurementMinute}/10 data telah diterima.`;
-            }
-
-        } else {
-
-            if (description) {
-
-                description.textContent =
-                    "✓ Semua 10 data pengukuran telah diterima.";
-            }
-
-            if (dataInfo) {
-
-                dataInfo.textContent =
-                    "✓ Pengukuran lengkap 10/10.";
-            }
-        }
-
-    } else {
-
-        // =================================================
-        // SELESAI
-        // =================================================
-
-        if (measurementMinute >= 10) {
-
-            if (description) {
-
-                description.textContent =
-                    "✓ Pengukuran 10 menit telah selesai.";
-            }
-
-            if (dataInfo) {
-
-                dataInfo.textContent =
-                    "✓ Semua 10 data pengukuran berhasil diterima.";
-            }
-
-        } else if (measurementMinute > 0) {
-
-            if (description) {
-
-                description.textContent =
-                    "Pengukuran dihentikan sebelum 10 menit.";
-            }
-
-            if (dataInfo) {
-
-                dataInfo.textContent =
-                    `Pengukuran berhenti pada ${measurementMinute}/10.`;
-            }
-
-        } else {
-
-            if (description) {
-
-                description.textContent =
-                    "Aktifkan saklar SENSOR untuk memulai pengukuran.";
-            }
-
-            if (dataInfo) {
-
-                dataInfo.textContent =
-                    "Belum ada data pengukuran.";
-            }
-        }
-    }
-
-
-    // =====================================================
-    // UPDATE TIMER / DETAIL
-    // =====================================================
-
-    if (measurementActive) {
-
-        updateMeasurementClock();
-    }
-}
-
-
-// =========================================================
-// SELESAI PENGUKURAN
-// =========================================================
-
-function finishMeasurement(reason) {
-
-    if (!measurementActive) {
-        return;
-    }
-
-
-    // Simpan waktu terakhir
-    const finalElapsedSeconds =
-        measurementStartTime
-            ? Math.floor(
-                (
-                    Date.now() -
-                    measurementStartTime
-                ) / 1000
-            )
-            : 0;
-
-
-    // =====================================================
-    // STOP TIMER
-    // =====================================================
-
-    clearTimeout(
-        measurementTimer
-    );
-
-    measurementTimer = null;
-
-
-    clearInterval(
-        measurementClockTimer
-    );
-
-    measurementClockTimer = null;
-
-    
-    clearInterval(
-    measurementTableWatcher
-);
-
-measurementTableWatcher = null;
-
-    // =====================================================
-    // MATIKAN PENGUKURAN
-    // =====================================================
-
-    measurementActive = false;
-
-const measurementPanel =
-    document.getElementById(
-        "measurementPanel"
-    );
-
-if (measurementPanel) {
-    measurementPanel.classList.remove("active");
-}
-    
-    measurementStartTime = null;
-
-    switch2State =
-        "SENSOR";
-
-
-    // =====================================================
-    // KIRIM SELESAI KE ESP32
-    // =====================================================
-
-    sendMQTT(
-        SWITCH2_TOPIC,
-        "SENSOR"
-    );
-
-
-    // =====================================================
-    // UPDATE UI
-    // =====================================================
-
-    updateSwitchDisplay();
-
-    updateMeasurementDisplay();
-
-    updateControlState();
-
-
-    // =====================================================
-    // TIMER TERAKHIR
-    // =====================================================
-
-    const timerElement =
-        document.getElementById(
-            "measurementTimer"
-        );
-
-
-    if (timerElement) {
-
-        const safeElapsed =
-            Math.min(
-                finalElapsedSeconds,
-                MEASUREMENT_TOTAL_SECONDS
-            );
-
-
-        const minutes =
-            Math.floor(
-                safeElapsed / 60
-            );
-
-
-        const seconds =
-            safeElapsed % 60;
-
-
-        timerElement.textContent =
-            String(minutes).padStart(2, "0") +
-            ":" +
-            String(seconds).padStart(2, "0");
-    }
-
-
-    // =====================================================
-    // PROGRESS TERAKHIR
-    // =====================================================
-
-    const progressBar =
-        document.getElementById(
-            "measurementProgressBar"
-        );
-
-
-    if (progressBar) {
-
-        progressBar.style.width =
-            `${Math.min(
-                (measurementMinute / 10) * 100,
-                100
-            )}%`;
-    }
-
-
-    const progressText =
-        document.getElementById(
-            "measurementProgressText"
-        );
-
-
-    if (progressText) {
-
-        progressText.textContent =
-            `DATA ${measurementMinute} / 10`;
-    }
-
-
-    console.log(
-        "RAD-V: Pengukuran selesai:",
-        reason,
-        `${measurementMinute}/10`
-    );
-}
-
-
-// =========================================================
-// KONTROL RC
-// =========================================================
-
-function pressControl(command, event) {
-
-    if (event) {
-        event.preventDefault();
-    }
-
-    if (!radVAuthenticated) {
-        return false;
-    }
-
-    if (measurementActive) {
-        return false;
-    }
-
-    if (switch1State !== "JALAN") {
-        return false;
-    }
-
-    if (activeControl === command) {
-        return true;
-    }
-
-    const sent =
-        sendMQTT(
-            CONTROL_TOPIC,
-            command
-        );
-
-    if (!sent) {
-
-        console.warn(
-            "Perintah tidak terkirim:",
-            command
-        );
-
-        return false;
-    }
-
-    activeControl =
-        command;
-
-    const buttons =
-        document.querySelectorAll(
-            ".control-button"
-        );
-
-    buttons.forEach(
-        button => {
-
-            button.classList.remove(
-                "active"
-            );
-        }
-    );
-
-    if (event) {
-
-        event.currentTarget.classList.add(
-            "active"
-        );
-    }
-
-    const commandDisplay =
-        document.getElementById(
-            "command"
-        );
-
-    if (commandDisplay) {
-
-        commandDisplay.innerText =
-            command;
-    }
-
-    return true;
-}
-
-
-// =========================================================
-// LEPAS KONTROL RC
-// =========================================================
-
-function releaseControl(
-    event
-) {
-
-    if (event) {
-
-        event.preventDefault();
-    }
-
-
-    if (!radVAuthenticated) {
-
-        return;
-    }
-
-
-    if (measurementActive) {
-
-        return;
-    }
-
-
-    if (
-        activeControl === null
-    ) {
-
-        return;
-    }
-
-
-  const sent =
-    sendMQTT(
-        CONTROL_TOPIC,
-        "BERHENTI"
-    );
-
-if (!sent) {
-
-    console.error(
-        "BERHENTI gagal dikirim ke ESP32."
-    );
-
-    return;
-}
-
-activeControl =
-    null;
-
-
-    const buttons =
-        document.querySelectorAll(
-            ".control-button"
-        );
-
-
-    buttons.forEach(
-        button => {
-
-            button.classList.remove(
-                "active"
-            );
-        }
-    );
-
-
-    const commandDisplay =
-        document.getElementById(
-            "command"
-        );
-
-
-    if (commandDisplay) {
-
-        commandDisplay.innerText =
-            "BERHENTI";
-    }
-}
-
-// =========================================================
-// SAFETY STOP - POINTER
-// Pastikan RC berhenti saat jari/mouse dilepas
-// =========================================================
-
-document.addEventListener(
-    "pointerup",
-    function (event) {
-
-        if (activeControl !== null) {
-            releaseControl(event);
-        }
-
-    },
-    true
-);
-
-document.addEventListener(
-    "pointercancel",
-    function (event) {
-
-        if (activeControl !== null) {
-            releaseControl(event);
-        }
-
-    },
-    true
-);
-
-// =========================================================
-// RTB
-// =========================================================
-
-function sendRTB() {
-
-    if (!radVAuthenticated) {
-        return false;
-    }
-
-
-    if (measurementActive) {
-        return false;
-    }
-
-
-    if (switch1State !== "JALAN") {
-        return false;
-    }
-
-
-    const sent =
-        sendMQTT(
-            CONTROL_TOPIC,
-            "RTB"
-        );
-
-
-    if (!sent) {
-
-        console.warn(
-            "RTB gagal dikirim ke ESP32."
-        );
-
-        return false;
-    }
-
-
-    // Pastikan kontrol sebelumnya dilepas
-    activeControl = null;
-
-
-    const buttons =
-        document.querySelectorAll(
-            ".control-button"
-        );
-
-
-    buttons.forEach(
-        button => {
-
-            button.classList.remove(
-                "active"
-            );
-        }
-    );
-
-
-    const commandDisplay =
-        document.getElementById(
-            "command"
-        );
-
-
-    if (commandDisplay) {
-
-        commandDisplay.innerText =
-            "RTB";
-    }
-
-
-    return true;
-}
-
-
-// =========================================================
-// FUNGSI LAMA - TETAP KOMPATIBEL
-// =========================================================
-
-function switch1Jalan() {
-
-    if (!radVAuthenticated) {
-        return;
-    }
-
-    if (measurementActive) {
-        return;
-    }
-
-    if (switch1State === "JALAN") {
-        return;
-    }
-
-    const sent = sendMQTT(
-        SWITCH1_TOPIC,
-        "JALAN"
-    );
-
-    if (!sent) {
-        console.warn(
-            "Gagal mengirim JALAN ke ESP32."
-        );
-        return;
-    }
-
-    switch1State = "JALAN";
-
-    updateSwitchDisplay();
-    updateControlState();
-}
-
-
-function switch1Stop() {
-
-    if (!radVAuthenticated) {
-        return;
-    }
-
-    if (measurementActive) {
-        return;
-    }
-
-    if (switch1State === "BERHENTI") {
-        return;
-    }
-
-    const sent = sendMQTT(
-        SWITCH1_TOPIC,
-        "BERHENTI"
-    );
-
-    if (!sent) {
-        console.warn(
-            "Gagal mengirim BERHENTI ke ESP32."
-        );
-        return;
-    }
-
-    switch1State = "BERHENTI";
-
-    if (activeControl !== null) {
-
-        sendMQTT(
-            CONTROL_TOPIC,
-            "BERHENTI"
-        );
-
-        activeControl = null;
-    }
-
-    updateSwitchDisplay();
-    updateControlState();
-}
-
-
-function switch2Mengukur() {
-
-    if (!radVAuthenticated) {
-        return;
-    }
-
-    if (switch1State !== "BERHENTI") {
-        return;
-    }
-
-    if (!measurementActive) {
-        startMeasurement();
-    }
-}
-
-
-function switch2Selesai() {
-
-    if (!radVAuthenticated) {
-        return;
-    }
-
-    if (measurementActive) {
-        finishMeasurement("MANUAL");
-    }
-}
-
-// =========================================================
-// KEYBOARD CONTROL RAD-V
-// =========================================================
-
-let keyboardControlActive = null;
-
-
-// =========================================================
-// PEMETAAN KEYBOARD
-// =========================================================
-
-const keyboardCommands = {
-
-    KeyW: "MAJU",
-    ArrowUp: "MAJU",
-
-    KeyS: "MUNDUR",
-    ArrowDown: "MUNDUR",
-
-    KeyA: "KIRI",
-    ArrowLeft: "KIRI",
-
-    KeyD: "KANAN",
-    ArrowRight: "KANAN"
-};
-
-
-// =========================================================
-// KEY DOWN
-// =========================================================
-
-document.addEventListener(
-    "keydown",
-    function (event) {
-
-        // =============================================
-        // PIN HARUS SUDAH BENAR
-        // =============================================
-
-        if (!radVAuthenticated) {
-            return;
-        }
-
-
-        // =============================================
-        // JANGAN AKTIF SAAT MENGETIK
-        // =============================================
-
-        if (
-            event.target.tagName === "INPUT" ||
-            event.target.tagName === "TEXTAREA" ||
-            event.target.tagName === "SELECT"
-        ) {
-            return;
-        }
-
-
-        // =============================================
-        // RTB = R
-        // =============================================
-
-        if (event.code === "KeyR") {
-
-            event.preventDefault();
-
-            // Jangan kirim berulang
-            if (event.repeat) {
-                return;
-            }
-
-            // RTB menggunakan fungsi yang sudah ada
-            sendRTB();
-
-            console.log(
-                "KEYBOARD: RTB"
-            );
-
-            return;
-        }
-
-
-        // =============================================
-        // CARI PERINTAH
-        // =============================================
-
-        const command =
-            keyboardCommands[event.code];
-
-
-        if (!command) {
-            return;
-        }
-
-
-        // =============================================
-        // CEGAH BROWSER SCROLL
-        // =============================================
-
-        event.preventDefault();
-
-
-        // =============================================
-        // JANGAN ULANGI SAAT TOMBOL DITAHAN
-        // =============================================
-
-        if (event.repeat) {
-            return;
-        }
-
-
-        // =============================================
-        // CEK PENGUKURAN
-        // =============================================
-
-        if (measurementActive) {
-
-            console.log(
-                "KEYBOARD LOCK: sedang mengukur"
-            );
-
-            return;
-        }
-
-
-        // =============================================
-        // SAKLAR 1 HARUS JALAN
-        // =============================================
-
-        if (
-            switch1State !== "JALAN"
-        ) {
-
-            console.log(
-                "KEYBOARD LOCK: Saklar 1 masih BERHENTI"
-            );
-
-            return;
-        }
-
-
-        // =============================================
-        // JIKA SUDAH ADA KONTROL AKTIF
-        // =============================================
-
-        if (
-            keyboardControlActive !== null
-        ) {
-
-            return;
-        }
-
-
-        // =============================================
-        // AKTIFKAN KONTROL
-        // =============================================
-
-       const activated =
-    pressControl(
-        command,
-        null
-    );
-
-
-if (!activated) {
-    return;
-}
-
-
-keyboardControlActive =
-    command;
-
-
-highlightKeyboardButton(
-    command
-);
-
-
-console.log(
-    "KEYBOARD:",
-    command
-);
-
-
-        // =============================================
-        // TAMPILKAN TOMBOL AKTIF
-        // =============================================
-
-        highlightKeyboardButton(
-            command
-        );
-
-
-        console.log(
-            "KEYBOARD:",
-            command
-        );
-    }
-);
-
-
-// =========================================================
-// KEY UP
-// =========================================================
-
-document.addEventListener(
-    "keyup",
-    function (event) {
-
-        const command =
-            keyboardCommands[event.code];
-
-
-        if (!command) {
-            return;
-        }
-
-
-        event.preventDefault();
-
-
-        // =============================================
-        // HANYA STOP KONTROL YANG SEDANG AKTIF
-        // =============================================
-
-        if (
-            keyboardControlActive === command
-        ) {
-
-            releaseControl(null);
-
-            keyboardControlActive =
-                null;
-
-
-            console.log(
-                "KEYBOARD STOP:",
-                command
-            );
-        }
-    }
-);
-
-
-// =========================================================
-// HIGHLIGHT TOMBOL
-// =========================================================
-
-function highlightKeyboardButton(
-    command
-) {
-
-    const buttons =
-        document.querySelectorAll(
-            ".control-button"
-        );
-
-
-    buttons.forEach(
-        button => {
-
-            button.classList.remove(
-                "active"
-            );
-
-
-            const text =
-                button.innerText
-                    .trim()
-                    .toUpperCase();
-
-
-            if (
-                text.includes(command)
-            ) {
-
-                button.classList.add(
-                    "active"
+                radMap.setView(
+                    [lat, lon],
+                    Math.max(
+                        radMap.getZoom(),
+                        17
+                    ),
+                    {
+                        animate: true
+                    }
                 );
+
+
+                /* -------------------------------
+                   Marker sementara
+                ------------------------------- */
+
+                const marker =
+                    makeMarker(
+                        lat,
+                        lon,
+                        Number.isFinite(usv)
+                            ? usv
+                            : NaN,
+                        Number.isFinite(cpm)
+                            ? cpm
+                            : NaN,
+                        isLatest
+                    );
+
+
+                marker.addTo(
+                    pointLayer
+                );
+
+
+                marker.openPopup();
+
+
+                /* -------------------------------
+                   Hapus marker setelah 4 detik
+                ------------------------------- */
+
+                setTimeout(
+                    () => {
+
+                        if (
+                            pointLayer &&
+                            pointLayer.hasLayer(
+                                marker
+                            )
+                        ) {
+
+                            pointLayer.removeLayer(
+                                marker
+                            );
+                        }
+
+                    },
+                    4000
+                );
+
             }
-        }
-    );
-}
+        );
 
 
-// =========================================================
-// SAFETY STOP
-// =========================================================
+        body.appendChild(tr);
 
-// Jika browser kehilangan fokus,
-// kendaraan otomatis diperintahkan STOP.
-
-window.addEventListener(
-    "blur",
-    function () {
-
-        if (
-            keyboardControlActive !== null
-        ) {
-
-            releaseControl(null);
-
-            keyboardControlActive =
-                null;
-        }
     }
 );
 
+    /* -----------------------------------------
+       TABLE INFO
+    ----------------------------------------- */
 
-// =========================================================
-// SAFETY STOP SAAT TAB TIDAK AKTIF
-// =========================================================
+    if (info) {
+
+        info.textContent =
+            `${rows.length} data | ` +
+            `klik baris untuk melihat posisi pada peta`;
+    }
+}
+
+
+/* =========================================================
+   START
+========================================================= */
 
 document.addEventListener(
-    "visibilitychange",
-    function () {
-
-        if (
-            document.hidden &&
-            keyboardControlActive !== null
-        ) {
-
-            releaseControl(null);
-
-            keyboardControlActive =
-                null;
-        }
-    }
+    "DOMContentLoaded",
+    initRadiationMap
 );
