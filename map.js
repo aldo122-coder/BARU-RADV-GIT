@@ -793,7 +793,7 @@ async function loadRadiationMap() {
 
 renderSpreadsheetTable(
     headers,
-    rowsTerbaru,
+    data.table.rows,
     timestampIndex,
     latIndex,
     lonIndex,
