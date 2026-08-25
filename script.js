@@ -68,6 +68,8 @@ let measurementActive = false;
 
 let measurementMinute = 0;
 
+let measurementInitialTableCount = 0;
+let measurementTableWatcher = null;
 
 // Timer maksimal 10 menit
 
@@ -928,6 +930,9 @@ function startMeasurement() {
 
     measurementActive = true;
 
+    measurementInitialTableCount =
+    getRadiationTableDataCount();
+
     const measurementPanel =
     document.getElementById(
         "measurementPanel"
@@ -988,6 +993,24 @@ if (measurementPanel) {
             },
             1000
         );
+
+    // =====================================================
+// MONITOR JUMLAH DATA TABEL
+// =====================================================
+
+clearInterval(
+    measurementTableWatcher
+);
+
+measurementTableWatcher =
+    setInterval(
+        function () {
+
+            checkMeasurementTableProgress();
+
+        },
+        2000
+    );
 
 
     // =====================================================
@@ -1063,44 +1086,6 @@ function handleMeasurementData(
 
         return;
     }
-
-
-    // =====================================================
-    // VALIDASI MINUTE
-    // =====================================================
-
-   const minute =
-    Number(data.minute);
-
-if (
-    !Number.isInteger(minute) ||
-    minute < 1 ||
-    minute > 10
-) {
-
-    console.warn(
-        "Minute tidak valid:",
-        data.minute
-    );
-
-    return;
-}
-
-if (
-    minute !== measurementMinute + 1
-) {
-
-    console.warn(
-        `Data tidak berurutan. ` +
-        `Diterima: ${minute}, ` +
-        `seharusnya: ${measurementMinute + 1}`
-    );
-
-    return;
-}
-
-measurementMinute =
-    minute;
 
 
     // =====================================================
@@ -2360,6 +2345,126 @@ document.addEventListener(
         }
     }
 );
+
+// =========================================================
+// HITUNG JUMLAH DATA PADA TABEL
+// =========================================================
+
+function getRadiationTableDataCount() {
+
+    const tbody =
+        document.querySelector(
+            "#radiationTable tbody"
+        );
+
+    if (!tbody) {
+        return 0;
+    }
+
+    const rows =
+        tbody.querySelectorAll("tr");
+
+    let count = 0;
+
+    rows.forEach(row => {
+
+        // Abaikan baris kosong
+        if (
+            row.classList.contains("table-empty")
+        ) {
+            return;
+        }
+
+        const cells =
+            row.querySelectorAll("td");
+
+        if (cells.length === 0) {
+            return;
+        }
+
+        count++;
+    });
+
+    return count;
+}
+
+
+// =========================================================
+// MONITOR DATA BARU PADA TABEL
+// =========================================================
+
+function checkMeasurementTableProgress() {
+
+    if (!measurementActive) {
+        return;
+    }
+
+    const currentCount =
+        getRadiationTableDataCount();
+
+
+    const newDataCount =
+        currentCount -
+        measurementInitialTableCount;
+
+
+    const newProgress =
+        Math.max(
+            0,
+            Math.min(
+                newDataCount,
+                10
+            )
+        );
+
+
+    if (
+        newProgress !== measurementMinute
+    ) {
+
+        measurementMinute =
+            newProgress;
+
+
+        console.log(
+            "RAD-V TABLE PROGRESS:",
+            {
+                awal:
+                    measurementInitialTableCount,
+
+                sekarang:
+                    currentCount,
+
+                baru:
+                    newDataCount,
+
+                progress:
+                    `${measurementMinute}/10`
+            }
+        );
+
+
+        updateMeasurementDisplay();
+    }
+
+
+    // 10 DATA SUDAH MASUK
+    if (
+        measurementMinute >= 10
+    ) {
+
+        clearInterval(
+            measurementTableWatcher
+        );
+
+        measurementTableWatcher =
+            null;
+
+        finishMeasurement(
+            "COMPLETE"
+        );
+    }
+}
 
 
 // =========================================================
