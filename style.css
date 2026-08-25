@@ -1,7 +1,7 @@
 /* =========================================================
    RAD-V MONITORING & CONTROL DASHBOARD
    STYLE.CSS
-   FINAL CLEAN VERSION
+   CLEAN VERSION
 ========================================================= */
 
 
@@ -34,7 +34,7 @@ body {
 
 
 /* =========================================================
-   MAIN CONTAINER
+   CONTAINER
 ========================================================= */
 
 .container {
@@ -70,14 +70,13 @@ h1 {
 
 
 /* =========================================================
-   SENSOR GRID
+   SENSOR
 ========================================================= */
 
 .sensor-grid {
     display: grid;
 
-    grid-template-columns:
-        repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(4, 1fr);
 
     gap: 15px;
 
@@ -85,8 +84,6 @@ h1 {
 }
 
 .card {
-    min-width: 0;
-
     background: #1b2230;
 
     border: 1px solid #2d3748;
@@ -96,6 +93,8 @@ h1 {
     padding: 20px;
 
     text-align: center;
+
+    min-width: 0;
 }
 
 .card h3 {
@@ -126,7 +125,7 @@ h1 {
 
 
 /* =========================================================
-   GENERAL SECTION
+   SECTION UMUM
 ========================================================= */
 
 .control-section,
@@ -134,6 +133,7 @@ h1 {
 .link-section,
 .map-section,
 .table-section {
+
     width: 100%;
 
     background: #1b2230;
@@ -150,91 +150,10 @@ h1 {
 .control-section h2,
 .status-card h2,
 .link-section h2 {
+
     text-align: center;
 
     margin-bottom: 20px;
-}
-
-
-/* =========================================================
-   RAD-V SWITCH CONTAINER
-   STOP + SELESAI BERSEBELAHAN
-========================================================= */
-
-.switch-container {
-    width: 100%;
-
-    max-width: 680px;
-
-    margin: 0 auto;
-
-    display: grid;
-
-    grid-template-columns:
-        repeat(2, minmax(0, 1fr));
-
-    gap: 20px;
-
-    align-items: stretch;
-
-    justify-content: center;
-}
-
-
-/* =========================================================
-   SWITCH CARD
-========================================================= */
-
-.switch-card {
-    width: 100%;
-    min-width: 0;
-
-    min-height: 130px;
-
-    display: flex;
-
-    flex-direction: column;
-
-    align-items: center;
-
-    justify-content: center;
-
-    padding: 20px;
-
-    background: #141a24;
-
-    border: 1px solid #334155;
-
-    border-radius: 14px;
-
-    text-align: center;
-
-    transition:
-        transform 0.2s ease,
-        border-color 0.2s ease,
-        background 0.2s ease,
-        opacity 0.2s ease;
-}
-
-.switch-card:hover {
-    border-color: #475569;
-
-    transform: translateY(-1px);
-}
-
-
-/* =========================================================
-   SWITCH CARD VARIANTS
-========================================================= */
-
-.switch-card-stop {
-    border-color: #374151;
-}
-
-.switch-card-measurement {
-    border-color: #374151;
-
-    margin-bottom: 0;
 }
 
 
@@ -242,487 +161,81 @@ h1 {
    SWITCH
 ========================================================= */
 
+.switch-container {
+
+    display: grid;
+
+    grid-template-columns: 1fr 1fr;
+
+    gap: 20px;
+}
+
+.switch-card {
+
+    background: #141a24;
+
+    padding: 20px;
+
+    border-radius: 12px;
+
+    text-align: center;
+}
+
+.switch-card h3 {
+    margin-bottom: 15px;
+}
+
 .switch {
-    width: 90px;
-    height: 46px;
 
-    padding: 5px;
+    width: 75px;
+    height: 38px;
 
-    margin: 0;
-
-    background: #4b5563;
+    background: #555;
 
     border-radius: 30px;
 
+    margin: auto;
+
+    padding: 4px;
+
     cursor: pointer;
 
-    transition:
-        background 0.25s ease,
-        box-shadow 0.25s ease;
-
-    flex-shrink: 0;
+    transition: 0.3s ease;
 }
 
-
-/* =========================================================
-   SWITCH CIRCLE
-========================================================= */
-
 .switch-circle {
-    width: 36px;
-    height: 36px;
+
+    width: 30px;
+    height: 30px;
 
     background: #ffffff;
 
     border-radius: 50%;
 
-    transition:
-        transform 0.25s ease;
+    transition: 0.3s ease;
 }
-
-
-/* =========================================================
-   SWITCH ACTIVE
-========================================================= */
 
 .switch.active {
     background: #16a34a;
-
-    box-shadow:
-        0 0 0 3px rgba(22, 163, 74, 0.15);
 }
 
 .switch.active .switch-circle {
-    transform: translateX(44px);
+    transform: translateX(37px);
 }
-
-
-/* =========================================================
-   SWITCH STATUS
-========================================================= */
 
 .switch-status {
     margin-top: 12px;
 
-    font-size: 16px;
-
-    font-weight: 500;
-
-    letter-spacing: 0.3px;
-
-    text-align: center;
-
-    color: #e5e7eb;
-}
-
-
-/* =========================================================
-   SWITCH DISABLED
-========================================================= */
-
-.switch.disabled {
-    opacity: 0.35;
-
-    cursor: not-allowed;
-
-    pointer-events: none;
-}
-
-
-/* =========================================================
-   MEASUREMENT PANEL
-========================================================= */
-
-.measurement-panel {
-    width: 100%;
-
-    max-width: 100%;
-
-    margin: 22px auto 0;
-
-    padding: 24px;
-
-    background: #111821;
-
-    border: 1px solid #334155;
-
-    border-radius: 16px;
-
-    box-shadow:
-        0 8px 25px rgba(0, 0, 0, 0.20);
-
-    transition:
-        border-color 0.3s ease,
-        box-shadow 0.3s ease;
-}
-
-
-/* =========================================================
-   MEASUREMENT PANEL ACTIVE
-========================================================= */
-
-.measurement-panel.active {
-    border-color: #2563eb;
-
-    box-shadow:
-        0 0 0 1px rgba(37, 99, 235, 0.15),
-        0 10px 30px rgba(0, 0, 0, 0.25);
-}
-
-
-/* =========================================================
-   MEASUREMENT TITLE
-========================================================= */
-
-.measurement-panel-title {
-    width: 100%;
-
-    display: flex;
-
-    align-items: center;
-
-    justify-content: space-between;
-
-    gap: 10px;
-
-    margin-bottom: 20px;
-
-    color: #ffffff;
-
-    font-family: Arial, Helvetica, sans-serif;
-
-    font-size: 22px;
-
     font-weight: bold;
-
-    line-height: normal;
-
-    letter-spacing: normal;
 }
 
 
 /* =========================================================
-   LIVE DOT
-========================================================= */
-
-.measurement-live-dot {
-    width: 11px;
-    height: 11px;
-
-    flex-shrink: 0;
-
-    border-radius: 50%;
-
-    background: #6b7280;
-
-    box-shadow: none;
-
-    transition:
-        background 0.3s ease,
-        box-shadow 0.3s ease;
-}
-
-
-/* ACTIVE LIVE DOT */
-
-.measurement-panel.active
-.measurement-live-dot {
-    background: #22c55e;
-
-    box-shadow:
-        0 0 0 5px rgba(34, 197, 94, 0.15),
-        0 0 12px rgba(34, 197, 94, 0.5);
-}
-
-
-/* =========================================================
-   MEASUREMENT SUMMARY
-========================================================= */
-
-.measurement-summary {
-    width: 100%;
-
-    display: grid;
-
-    grid-template-columns:
-        repeat(3, minmax(0, 1fr));
-
-    gap: 12px;
-
-    margin-bottom: 18px;
-}
-
-
-/* =========================================================
-   MEASUREMENT INFO CARD
-========================================================= */
-
-.measurement-info {
-    min-width: 0;
-    width: 100%;
-    max-width: 100%;
-    min-height: 90px;
-
-    display: flex;
-    flex-direction: column;
-
-    align-items: center;
-    justify-content: center;
-
-    padding: 15px 6px;
-
-    background: #1b2230;
-
-    border: 1px solid #273449;
-    border-radius: 11px;
-
-    text-align: center;
-
-    overflow: hidden;
-}
-
-/* LABEL STATUS / DATA / WAKTU */
-
-.measurement-info span {
-    display: block;
-
-    margin-bottom: 12px;
-
-    color: #aeb8c8;
-
-    font-family: Arial, Helvetica, sans-serif;
-
-    font-size: 16px;
-
-    font-weight: bold;
-
-    line-height: normal;
-
-    letter-spacing: normal;
-}
-
-/* NILAI */
-
-.measurement-info strong {
-    display: block;
-
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-
-    color: #ffffff;
-
-    font-size: 28px;
-
-    font-weight: 700;
-
-    line-height: 1.15;
-
-    letter-spacing: 0;
-
-    text-align: center;
-
-    white-space: normal;
-
-    overflow-wrap: anywhere;
-
-    word-break: break-word;
-
-    overflow: hidden;
-}
-
-
-/* =========================================================
-   STATUS
-========================================================= */
-
-#measurementStatus {
-    color: #f59e0b;
-}
-
-
-/* =========================================================
-   DATA
-========================================================= */
-
-#measurementProgress {
-    color: #22c55e;
-}
-
-
-/* =========================================================
-   TIMER
-========================================================= */
-
-#measurementTimer {
-    color: #60a5fa;
-}
-
-
-/* =========================================================
-   PROGRESS WRAPPER
-========================================================= */
-
-.measurement-progress-wrapper {
-    width: 100%;
-
-    margin-bottom: 10px;
-}
-
-
-/* =========================================================
-   PROGRESS TRACK
-========================================================= */
-
-.measurement-progress-track {
-    width: 100%;
-
-    height: 14px;
-
-    overflow: hidden;
-
-    background: #0d131c;
-
-    border: 1px solid #334155;
-
-    border-radius: 20px;
-}
-
-
-/* =========================================================
-   PROGRESS BAR
-========================================================= */
-
-.measurement-progress-bar {
-    width: 0%;
-
-    height: 100%;
-
-    background:
-        linear-gradient(
-            90deg,
-            #16a34a,
-            #22c55e
-        );
-
-    border-radius: 20px;
-
-    transition:
-        width 0.5s ease;
-}
-
-
-/* =========================================================
-   PROGRESS TEXT
-========================================================= */
-
-.measurement-progress-text {
-    margin-top: 8px;
-
-    text-align: right;
-
-    color: #94a3b8;
-
-    font-size: 14px;
-
-    font-weight: 400;
-
-    letter-spacing: 0.3px;
-}
-
-
-/* =========================================================
-   MEASUREMENT DETAIL
-========================================================= */
-
-.measurement-detail {
-    width: 100%;
-
-    margin-top: 12px;
-
-    padding: 15px 18px;
-
-    background: #1b2230;
-
-    border: 1px solid #273449;
-
-    border-radius: 10px;
-
-    color: #dbe3ef;
-
-    font-size: 15px;
-
-    font-weight: 500;
-
-    line-height: 1.5;
-
-    text-align: center;
-}
-
-
-/* =========================================================
-   MEASUREMENT DESCRIPTION
-========================================================= */
-
-.measurement-description {
-    width: 100%;
-
-    margin-top: 10px;
-
-    padding: 15px 18px;
-
-    background: #1b2230;
-
-    border: 1px solid #273449;
-
-    border-radius: 10px;
-
-    color: #cbd5e1;
-
-    font-size: 15px;
-
-    font-weight: 500;
-
-    line-height: 1.5;
-
-    text-align: center;
-}
-
-
-/* =========================================================
-   MEASUREMENT DATA INFO
-========================================================= */
-
-.measurement-data-info {
-    width: 100%;
-
-    margin-top: 10px;
-
-    padding: 15px 18px;
-
-    background: #0f141c;
-
-    border: 1px solid #334155;
-
-    border-radius: 10px;
-
-    color: #93c5fd;
-
-    font-size: 15px;
-
-    font-weight: 500;
-
-    line-height: 1.5;
-
-    text-align: center;
-}
-
-
-/* =========================================================
-   RAD-V RC CONTROL
+   RAD-V CONTROL
 ========================================================= */
 
 .direction-control {
+
     width: 100%;
 
     max-width: 750px;
@@ -736,6 +249,7 @@ h1 {
 ========================================================= */
 
 .rtb-button {
+
     width: 100%;
 
     height: 65px;
@@ -770,6 +284,7 @@ h1 {
 }
 
 .rtb-button:active {
+
     filter: brightness(0.75);
 
     transform: scale(0.99);
@@ -781,10 +296,10 @@ h1 {
 ========================================================= */
 
 .rc-main {
+
     display: grid;
 
-    grid-template-columns:
-        1fr 1fr;
+    grid-template-columns: 1fr 1fr;
 
     width: 100%;
 
@@ -805,10 +320,10 @@ h1 {
 ========================================================= */
 
 .side-control {
+
     display: grid;
 
-    grid-template-columns:
-        1fr 1fr;
+    grid-template-columns: 1fr 1fr;
 
     gap: 3px;
 
@@ -821,10 +336,10 @@ h1 {
 ========================================================= */
 
 .forward-control {
+
     display: grid;
 
-    grid-template-rows:
-        1fr 1fr;
+    grid-template-rows: 1fr 1fr;
 
     gap: 3px;
 
@@ -837,6 +352,7 @@ h1 {
 ========================================================= */
 
 .control-button {
+
     width: 100%;
     height: 100%;
 
@@ -876,6 +392,7 @@ h1 {
 }
 
 .control-button .arrow {
+
     font-size: 34px;
 
     line-height: 1;
@@ -902,31 +419,11 @@ h1 {
     background: #ea580c;
 }
 
-
-/* =========================================================
-   CONTROL ACTIVE
-========================================================= */
-
 .control-button.active {
+
     filter: brightness(0.7);
 
     transform: scale(0.96);
-}
-
-
-/* =========================================================
-   CONTROL DISABLED
-========================================================= */
-
-.control-button:disabled,
-.rtb-button:disabled {
-    opacity: 0.35;
-
-    cursor: not-allowed;
-
-    filter: grayscale(0.7);
-
-    transform: none !important;
 }
 
 
@@ -935,6 +432,7 @@ h1 {
 ========================================================= */
 
 .status-row {
+
     display: flex;
 
     justify-content: space-between;
@@ -960,6 +458,7 @@ h1 {
 ========================================================= */
 
 .link-button {
+
     width: 100%;
 
     height: 55px;
@@ -1001,7 +500,7 @@ h1 {
 
 
 /* =========================================================
-   MAP SECTION
+   PEMETAAN RAD-V
 ========================================================= */
 
 .map-section {
@@ -1017,6 +516,7 @@ h1 {
 
     margin-top: 20px;
 
+    /* Jangan mengganggu Leaflet */
     position: relative;
 }
 
@@ -1065,7 +565,7 @@ h1 {
 
 
 /* =========================================================
-   MAP REFRESH BUTTON
+   REFRESH BUTTON
 ========================================================= */
 
 .map-refresh {
@@ -1105,6 +605,10 @@ h1 {
    LEAFLET MAP
 ========================================================= */
 
+/*
+   INI BAGIAN PALING PENTING
+*/
+
 #radMap {
     display: block;
 
@@ -1129,17 +633,32 @@ h1 {
     position: relative;
 }
 
+
+/*
+   Biarkan Leaflet mengatur semua
+   elemen internalnya sendiri.
+*/
+
 #radMap .leaflet-container {
     width: 100%;
 
     height: 100%;
 }
 
+
+/*
+   CSS global sering membuat gambar menjadi
+   max-width: 100%, dan ini bisa merusak tile Leaflet.
+*/
+
 #radMap img.leaflet-tile {
     max-width: none !important;
 
     max-height: none !important;
 }
+
+
+/* SVG marker / jalur */
 
 #radMap svg {
     max-width: none !important;
@@ -1178,6 +697,7 @@ h1 {
     display: inline-block;
 
     width: 10px;
+
     height: 10px;
 
     border-radius: 50%;
@@ -1208,10 +728,69 @@ h1 {
 
 
 /* =========================================================
-   TABLE SECTION
+   MOBILE MAP
+========================================================= */
+
+@media (max-width: 700px) {
+
+    .map-section {
+        padding: 15px;
+    }
+
+    .map-header {
+        align-items: flex-start;
+    }
+
+    .map-header h2 {
+        font-size: 20px;
+    }
+
+    .map-header p {
+        font-size: 12px;
+    }
+
+    .map-refresh {
+        padding: 9px 12px;
+
+        font-size: 12px;
+    }
+
+    #radMap {
+        height: 350px;
+
+        min-height: 350px;
+    }
+}
+
+
+@media (max-width: 450px) {
+
+    .map-header {
+        flex-direction: column;
+    }
+
+    .map-refresh {
+        width: 100%;
+    }
+
+    #radMap {
+        height: 320px;
+
+        min-height: 320px;
+    }
+
+    .map-legend {
+        gap: 10px;
+    }
+}
+
+
+/* =========================================================
+   GOOGLE SPREADSHEET TABLE
 ========================================================= */
 
 .table-section {
+
     background: #1b2230;
 
     border-radius: 15px;
@@ -1222,6 +801,7 @@ h1 {
 }
 
 .table-header {
+
     display: flex;
 
     justify-content: space-between;
@@ -1238,6 +818,7 @@ h1 {
 }
 
 .table-header p {
+
     color: #7f8a9a;
 
     font-size: 13px;
@@ -1247,19 +828,11 @@ h1 {
 
 
 /* =========================================================
-   TABLE REFRESH
-========================================================= */
-
-.table-refresh {
-    flex-shrink: 0;
-}
-
-
-/* =========================================================
    TABLE WRAPPER
 ========================================================= */
 
 .table-wrapper {
+
     width: 100%;
 
     overflow-x: auto;
@@ -1277,6 +850,7 @@ h1 {
 ========================================================= */
 
 #radiationTable {
+
     width: 100%;
 
     min-width: 750px;
@@ -1287,6 +861,7 @@ h1 {
 }
 
 #radiationTable th {
+
     background: #2563eb;
 
     color: #ffffff;
@@ -1307,6 +882,7 @@ h1 {
 }
 
 #radiationTable td {
+
     padding: 10px;
 
     border-bottom: 1px solid #2d3748;
@@ -1321,6 +897,7 @@ h1 {
 }
 
 #radiationTable tbody tr {
+
     cursor: pointer;
 
     transition:
@@ -1328,15 +905,18 @@ h1 {
 }
 
 #radiationTable tbody tr:hover {
+
     background: #202a3a;
 }
 
 #radiationTable tbody tr.latest-row {
+
     background:
         rgba(37, 99, 235, 0.18);
 }
 
 #radiationTable tbody tr.latest-row td {
+
     font-weight: bold;
 }
 
@@ -1346,18 +926,21 @@ h1 {
 ========================================================= */
 
 .radiation-low {
+
     color: #22c55e !important;
 
     font-weight: bold;
 }
 
 .radiation-medium {
+
     color: #f59e0b !important;
 
     font-weight: bold;
 }
 
 .radiation-high {
+
     color: #ef4444 !important;
 
     font-weight: bold;
@@ -1369,6 +952,7 @@ h1 {
 ========================================================= */
 
 .table-empty {
+
     padding: 25px !important;
 
     color: #7f8a9a !important;
@@ -1380,6 +964,7 @@ h1 {
 ========================================================= */
 
 .table-map-button {
+
     border: none;
 
     border-radius: 6px;
@@ -1398,6 +983,7 @@ h1 {
 }
 
 .table-map-button:hover {
+
     filter: brightness(1.12);
 }
 
@@ -1407,6 +993,7 @@ h1 {
 ========================================================= */
 
 footer {
+
     text-align: center;
 
     color: #687386;
@@ -1418,20 +1005,249 @@ footer {
 
 
 /* =========================================================
-   PIN SCREEN
+   TABLET
 ========================================================= */
 
-body.pin-locked {
-    overflow: hidden !important;
+@media (max-width: 850px) {
 
-    height: 100vh;
-    height: 100dvh;
+    .sensor-grid {
+
+        grid-template-columns:
+            repeat(2, 1fr);
+    }
+
+    .container {
+
+        width: 94%;
+    }
+
+    #radMap {
+
+        height: 400px;
+    }
 }
 
 
 /* =========================================================
-   PIN SCREEN CONTAINER
+   MOBILE
 ========================================================= */
+
+@media (max-width: 700px) {
+
+    .container {
+
+        width: 94%;
+
+        padding-top: 15px;
+    }
+
+
+    /* HEADER */
+
+    h1 {
+
+        font-size: 27px;
+    }
+
+    .subtitle {
+
+        font-size: 14px;
+
+        margin-bottom: 20px;
+    }
+
+
+    /* SENSOR */
+
+    .sensor-grid {
+
+        grid-template-columns:
+            repeat(2, 1fr);
+
+        gap: 10px;
+    }
+
+    .card {
+
+        padding: 15px 8px;
+    }
+
+    .card h3 {
+
+        font-size: 15px;
+    }
+
+    .value {
+
+        font-size: 23px;
+    }
+
+    .gps {
+
+        font-size: 15px;
+    }
+
+
+    /* SWITCH */
+
+    .switch-container {
+
+        grid-template-columns: 1fr;
+
+        gap: 10px;
+    }
+
+
+    /* RC */
+
+    .direction-control {
+
+        width: 100%;
+
+        max-width: 100%;
+    }
+
+    .rtb-button {
+
+        height: 58px;
+
+        font-size: 18px;
+    }
+
+    .rc-main {
+
+        height: 230px;
+    }
+
+    .control-button {
+
+        font-size: 16px;
+    }
+
+    .control-button .arrow {
+
+        font-size: 29px;
+    }
+
+
+    /* MAP */
+
+    .map-section {
+
+        padding: 15px;
+    }
+
+    .map-header {
+
+        align-items: flex-start;
+    }
+
+    .map-header h2 {
+
+        font-size: 20px;
+    }
+
+    .map-header p {
+
+        font-size: 12px;
+    }
+
+    .map-refresh {
+
+        padding: 9px 12px;
+
+        font-size: 12px;
+    }
+
+    #radMap {
+
+        height: 350px;
+    }
+
+
+    /* TABLE */
+
+    .table-section {
+
+        padding: 15px;
+    }
+
+    .table-header {
+
+        align-items: flex-start;
+    }
+
+    .table-header h2 {
+
+        font-size: 20px;
+    }
+
+    .table-header p {
+
+        font-size: 12px;
+    }
+}
+
+
+/* =========================================================
+   SMALL MOBILE
+========================================================= */
+
+@media (max-width: 450px) {
+
+    .sensor-grid {
+
+        gap: 8px;
+    }
+
+    .card {
+
+        padding: 12px 5px;
+    }
+
+    .value {
+
+        font-size: 20px;
+    }
+
+    .gps {
+
+        font-size: 13px;
+    }
+
+
+    /* MAP HEADER */
+
+    .map-header {
+
+        flex-direction: column;
+    }
+
+    .map-refresh {
+
+        width: 100%;
+    }
+
+    #radMap {
+
+        height: 320px;
+    }
+
+    .map-legend {
+
+        gap: 10px;
+    }
+}
+
+/* =========================================================
+   RAD-V PIN SCREEN
+========================================================= */
+
+body.pin-locked {
+    overflow: hidden !important;
+    height: 100vh;
+    height: 100dvh;
+}
 
 .pin-screen {
     position: fixed;
@@ -1465,7 +1281,6 @@ body.pin-locked {
 
 .pin-box {
     width: 100%;
-
     max-width: 380px;
 
     background: #1b2230;
@@ -1617,540 +1432,19 @@ body.pin-locked {
     font-weight: bold;
 }
 
+/* Saat PIN belum dibuka, halaman tidak boleh discroll */
+
+body.pin-locked {
+    overflow: hidden !important;
+    height: 100vh;
+    height: 100dvh;
+}
 
 /* =========================================================
-   TABLET
-========================================================= */
-
-@media (max-width: 850px) {
-
-    .sensor-grid {
-        grid-template-columns:
-            repeat(2, minmax(0, 1fr));
-    }
-
-    .container {
-        width: 94%;
-    }
-
-    #radMap {
-        height: 400px;
-
-        min-height: 400px;
-    }
-}
-
-
-/* =========================================================
-   MOBILE
-========================================================= */
-
-@media (max-width: 700px) {
-
-    .container {
-        width: 94%;
-
-        padding-top: 15px;
-    }
-
-
-    /* -----------------------------------------------------
-       HEADER
-    ----------------------------------------------------- */
-
-    h1 {
-        font-size: 27px;
-    }
-
-    .subtitle {
-        font-size: 14px;
-
-        margin-bottom: 20px;
-    }
-
-
-    /* -----------------------------------------------------
-       SENSOR
-    ----------------------------------------------------- */
-
-    .sensor-grid {
-        grid-template-columns:
-            repeat(2, minmax(0, 1fr));
-
-        gap: 10px;
-    }
-
-    .card {
-        padding: 15px 8px;
-    }
-
-    .card h3 {
-        font-size: 15px;
-    }
-
-    .value {
-        font-size: 23px;
-    }
-
-    .gps {
-        font-size: 15px;
-    }
-
-
-    /* -----------------------------------------------------
-       CONTROL SECTION
-    ----------------------------------------------------- */
-
-    .control-section {
-        padding: 18px;
-    }
-
-    .control-section h2 {
-        font-size: 21px;
-
-        margin-bottom: 20px;
-    }
-
-
-    /* -----------------------------------------------------
-       SWITCH
-       TETAP BERSEBELAHAN
-    ----------------------------------------------------- */
-
-    .switch-container {
-        width: 100%;
-
-        max-width: 520px;
-
-        grid-template-columns:
-            repeat(2, minmax(0, 1fr));
-
-        gap: 10px;
-
-        margin-left: auto;
-
-        margin-right: auto;
-    }
-
-    .switch-card {
-        min-height: 115px;
-
-        padding: 15px 8px;
-    }
-
-    .switch {
-        width: 78px;
-
-        height: 40px;
-
-        padding: 4px;
-    }
-
-    .switch-circle {
-        width: 32px;
-
-        height: 32px;
-    }
-
-    .switch.active .switch-circle {
-        transform:
-            translateX(38px);
-    }
-
-    .switch-status {
-        margin-top: 10px;
-
-        font-size: 16px;
-
-        font-weight: 500;
-    }
-
-
-    /* -----------------------------------------------------
-       MEASUREMENT PANEL
-    ----------------------------------------------------- */
-
-    .measurement-panel {
-        width: 100%;
-
-        margin-top: 16px;
-
-        padding: 18px;
-
-        border-radius: 14px;
-    }
-
-    .measurement-panel-title {
-        font-size: 19px;
-
-        margin-bottom: 16px;
-    }
-
-    .measurement-summary {
-        gap: 8px;
-    }
-
-    .measurement-info {
-        min-height: 75px;
-
-        padding: 12px 6px;
-    }
-
-   .measurement-info span {
-    font-size: 15px;
-
-    font-weight: bold;
-}
-
-.measurement-info strong {
-    font-size: 17px;
-    font-weight: bold;
-
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-
-    white-space: normal;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-
-    text-align: center;
-}
-
-    .measurement-progress-track {
-        height: 12px;
-    }
-
-    .measurement-progress-text {
-        font-size: 12px;
-    }
-
-    .measurement-detail,
-    .measurement-description,
-    .measurement-data-info {
-        font-size: 13px;
-
-        padding: 12px 10px;
-    }
-
-
-    /* -----------------------------------------------------
-       RC
-    ----------------------------------------------------- */
-
-    .direction-control {
-        width: 100%;
-
-        max-width: 100%;
-    }
-
-    .rtb-button {
-        height: 58px;
-
-        font-size: 18px;
-    }
-
-    .rc-main {
-        height: 230px;
-    }
-
-    .control-button {
-        font-size: 16px;
-    }
-
-    .control-button .arrow {
-        font-size: 29px;
-    }
-
-
-    /* -----------------------------------------------------
-       MAP
-    ----------------------------------------------------- */
-
-    .map-section {
-        padding: 15px;
-    }
-
-    .map-header {
-        align-items: flex-start;
-    }
-
-    .map-header h2 {
-        font-size: 20px;
-    }
-
-    .map-header p {
-        font-size: 12px;
-    }
-
-    .map-refresh {
-        padding: 9px 12px;
-
-        font-size: 12px;
-    }
-
-    #radMap {
-        height: 350px;
-
-        min-height: 350px;
-    }
-
-
-    /* -----------------------------------------------------
-       TABLE
-    ----------------------------------------------------- */
-
-    .table-section {
-        padding: 15px;
-    }
-
-    .table-header {
-        width: 100%;
-
-        min-width: 0;
-
-        display: flex;
-
-        flex-direction: column;
-
-        align-items: stretch;
-
-        gap: 10px;
-    }
-
-    .table-header > div {
-        width: 100%;
-
-        min-width: 0;
-    }
-
-    .table-header h2 {
-        font-size: 20px;
-    }
-
-    .table-header p {
-        font-size: 12px;
-    }
-
-    .table-refresh {
-        width: 100% !important;
-
-        max-width: 100% !important;
-
-        min-width: 0 !important;
-
-        margin: 0;
-
-        padding: 9px 12px;
-
-        box-sizing: border-box;
-    }
-}
-
-
-/* =========================================================
-   SMALL MOBILE
+   PIN MOBILE
 ========================================================= */
 
 @media (max-width: 450px) {
-
-    .sensor-grid {
-        gap: 8px;
-    }
-
-    .card {
-        padding: 12px 5px;
-    }
-
-    .value {
-        font-size: 20px;
-    }
-
-    .gps {
-        font-size: 13px;
-    }
-
-
-    /* -----------------------------------------------------
-       SWITCH
-    ----------------------------------------------------- */
-
-    .switch-container {
-        width: 100%;
-
-        gap: 7px;
-    }
-
-    .switch-card {
-        min-height: 105px;
-
-        padding: 12px 5px;
-
-        border-radius: 12px;
-    }
-
-    .switch {
-        width: 70px;
-
-        height: 37px;
-
-        padding: 4px;
-    }
-
-    .switch-circle {
-        width: 29px;
-
-        height: 29px;
-    }
-
-    .switch.active .switch-circle {
-        transform:
-            translateX(33px);
-    }
-
-    .switch-status {
-        font-size: 14px;
-    }
-
-
-   /* -----------------------------------------------------
-   MEASUREMENT
------------------------------------------------------ */
-
-.measurement-panel {
-    width: 100%;
-
-    margin-top: 16px;
-
-    padding: 18px;
-
-    border-radius: 14px;
-
-    overflow: hidden;
-}
-
-.measurement-panel-title {
-    width: 100%;
-
-    font-size: 19px;
-
-    margin-bottom: 16px;
-
-    white-space: nowrap;
-}
-
-.measurement-summary {
-    width: 100%;
-
-    grid-template-columns:
-        repeat(3, minmax(0, 1fr));
-
-    gap: 8px;
-}
-
-.measurement-info {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
-
-    min-height: 75px;
-
-    padding: 10px 4px;
-
-    overflow: hidden;
-}
-
-.measurement-info span {
-    display: block;
-
-    width: 100%;
-    max-width: 100%;
-
-    margin-bottom: 8px;
-
-    font-size: 12px;
-
-    font-weight: bold;
-
-    line-height: 1.1;
-
-    white-space: nowrap;
-
-    text-align: center;
-}
-
-.measurement-info strong {
-    display: block;
-
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-
-    font-size: 14px;
-
-    font-weight: bold;
-
-    line-height: 1.15;
-
-    white-space: nowrap;
-
-    text-align: center;
-
-    overflow: hidden;
-}
-
-.measurement-progress-track {
-    height: 12px;
-}
-
-.measurement-progress-text {
-    display: none !important;
-}
-
-.measurement-detail,
-.measurement-description,
-.measurement-data-info {
-    width: 100%;
-    max-width: 100%;
-
-    font-size: 13px;
-
-    padding: 12px 10px;
-
-    overflow: hidden;
-
-    overflow-wrap: anywhere;
-
-    word-break: break-word;
-}
-
-
-    /* -----------------------------------------------------
-       MAP
-    ----------------------------------------------------- */
-
-    .map-header {
-        flex-direction: column;
-    }
-
-    .map-refresh {
-        width: 100%;
-    }
-
-    #radMap {
-        height: 320px;
-
-        min-height: 320px;
-    }
-
-    .map-legend {
-        gap: 10px;
-    }
-
-
-    /* -----------------------------------------------------
-       PIN
-    ----------------------------------------------------- */
 
     .pin-screen {
         padding: 16px;
@@ -2193,21 +1487,63 @@ body.pin-locked {
 
         font-size: 15px;
     }
+}
+
+/* =========================================================
+   FIX TOMBOL REFRESH TABEL MOBILE
+========================================================= */
+
+.table-refresh {
+    flex-shrink: 0;
+}
 
 
-    /* -----------------------------------------------------
-       TABLE
-    ----------------------------------------------------- */
+/* TABLET / MOBILE */
+@media (max-width: 700px) {
 
     .table-header {
         width: 100%;
+        min-width: 0;
 
+        display: flex;
+        flex-direction: column;
+
+        align-items: stretch;
+        gap: 10px;
+    }
+
+    .table-header > div {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .table-refresh {
+        width: 100% !important;
+        max-width: 100% !important;
+
+        min-width: 0 !important;
+
+        flex-shrink: 1 !important;
+
+        box-sizing: border-box;
+
+        margin: 0;
+
+        padding: 9px 12px;
+    }
+}
+
+
+/* HP KECIL */
+@media (max-width: 450px) {
+
+    .table-header {
+        width: 100%;
         max-width: 100%;
     }
 
     .table-refresh {
         width: 100% !important;
-
         max-width: 100% !important;
 
         min-width: 0 !important;
@@ -2216,129 +1552,34 @@ body.pin-locked {
     }
 }
 
-
 /* =========================================================
-   VERY SMALL MOBILE
+   RAD-V CONTROL DISABLED
 ========================================================= */
 
-@media (max-width: 380px) {
-
-    .switch-container {
-        gap: 6px;
-    }
-
-    .switch-card {
-        min-height: 100px;
-
-        padding: 10px 4px;
-    }
-
-    .switch {
-        width: 66px;
-
-        height: 35px;
-
-        padding: 3px;
-    }
-
-    .switch-circle {
-        width: 29px;
-
-        height: 29px;
-    }
-
-    .switch.active .switch-circle {
-        transform:
-            translateX(31px);
-    }
-
-    .switch-status {
-        font-size: 13px;
-    }
-
-    .measurement-panel {
-        padding: 12px;
-    }
-
-    .measurement-panel-title {
-        font-size: 16px;
-    }
-
-  .measurement-info strong {
-    font-size: 14px;
-
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-
-    white-space: nowrap;
-
-    text-align: center;
-
-    overflow: hidden;
-}
+.control-button:disabled,
+.rtb-button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    filter: grayscale(0.7);
+    transform: none !important;
 }
 
-/* =========================================================
-   MEASUREMENT MESSAGE - BOLD
-========================================================= */
 
-.measurement-detail,
-.measurement-description,
-.measurement-data-info {
-    font-family: Arial, Helvetica, sans-serif;
+/* SWITCH DISABLED */
 
-    font-size: 15px;
-
-    font-weight: bold;
-
-    line-height: 1.5;
-
-    text-align: center;
+.switch.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
 }
 
-/* =========================================================
-   HILANGKAN INFORMASI YANG TIDAK DIPERLUKAN
-========================================================= */
 
-/* Hapus panel "Belum ada pengukuran." */
-.measurement-detail {
-    display: none !important;
-}
+/* STATUS PENGUKURAN */
 
-/* Hapus tulisan DATA 0 / 10 di sebelah kanan progress bar */
-.measurement-progress-text {
-    display: none !important;
-}
-
-/* DESKTOP */
 #measurementStatus {
-    font-size: 28px !important;
-    font-weight: 700 !important;
-    line-height: 1.15 !important;
-    white-space: nowrap !important;
+    color: #f59e0b;
 }
 
-
-/* MOBILE */
-@media (max-width: 700px) {
-    #measurementStatus {
-        font-size: 17px !important;
-    }
-}
-
-
-/* HP KECIL */
-@media (max-width: 450px) {
-    #measurementStatus {
-        font-size: 16px !important;
-    }
-}
-
-
-/* HP SANGAT KECIL */
-@media (max-width: 380px) {
-    #measurementStatus {
-        font-size: 15px !important;
-    }
+#measurementProgress {
+    color: #22c55e;
 }
